@@ -56,7 +56,7 @@ escapedDoubleQuotes s = ptext $ "\"" ++ concatMap f s ++ "\""
 escapeRegex :: Char -> String
 escapeRegex '\n' = "\\n"
 escapeRegex '\t' = "\\t"
-escapeRegex c | c `elem` ("$^.'[]()|*+?{}\\" :: String) = ['\\',c]
+escapeRegex c | c `elem` ("$^.[]()|*+?{}\\" :: String) = ['\\',c]
 escapeRegex c = [c]
 
 characterClassRegex :: Reg -> Maybe [String]

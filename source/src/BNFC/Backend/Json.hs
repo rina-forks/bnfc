@@ -1,5 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 
 {- Generates a JSON file from a BNF grammar. -}
 module BNFC.Backend.Json where
@@ -22,74 +23,58 @@ makeJson opts cf = do
 comment :: String -> String
 comment = ("// " ++)
 
-setup :: String -> Doc
-setup name = vcat
-    [ "from setuptools import setup, find_packages"
-    , "setup" <> parens (fsep (punctuate ","
-        [ "name" <=> quotes ("pygment-"<>lowerCase name)
-        , "version" <=> "0.1"
-        , "packages" <=> brackets (quotes moduleName)
-        , "entry_points" <=> entryPoints
-        , "install_requires = ['pygments']"
-        ]))
-    ]
-  where
-    className = camelCase name <> "Lexer"
-    moduleName = lowerCase name
-    entryPoints =
-        braces( "'pygments.lexers':"
-              <> doubleQuotes (moduleName <> "=" <> moduleName <> ":" <> className))
-
 lexer :: String -> CF -> Doc
 lexer name cf = vcat
-    -- Import statments
-    [ "import pygments.lexer"
-    , "from pygments.token import *"
-    -- Declare our lexer
-    , "__all__" <=> brackets (doubleQuotes className)
-    -- define lexer
-    , "class" <+> className <> parens "pygments.lexer.RegexLexer" <> ":"
+    [ "{"
     , indent
-        [ "name" <=> quotes (text name)
-        , "aliases" <=> brackets (quotes (lowerCase name))
-        -- filenames = ['*.cf', '*lbnf']
-        , "KEYWORDS" <=> brackets keywords
-        -- We override the get_tokens_unprocessed method to filter keywords
-        -- from identifiers
-        , "def get_tokens_unprocessed(self, text):"
-        , indent
-            [ "for index, token, value in super(" <> className <> ",self).get_tokens_unprocessed(text):"
-            , indent
-                [ "if token is Name and value in self.KEYWORDS:"
-                , indent [ "yield index, Keyword, value" ]
-                , "else:"
-                , indent [ "yield index, token, value" ]
-                ]
-            ]
+        [ doubleQuotes "keywords" <+> ":" <+> brackets keywords <> ","
         -- The token is defined using regex
-        , "tokens = {"
-        , indent
-            [ "'root': ["
-            , indent (map prLexRule (mkLexer cf) ++ ["(r'\\s+', Token.Space)"])
-            , "]"
-            ]
-        , "}"
+        , doubleQuotes "tokens" <+> ":" <+> "["
+        , indent (punctuate "," $ map prLexRule (mkLexer cf))
+        , "]"
         ]
+    , "}"
     ]
   where
     className = camelCase name <> "Lexer"
-    keywords = fsep (punctuate "," (map (quotes . text) (reservedWords cf)))
-    indent = nest 4 . vcat
+    keywords = fsep (punctuate "," (map (doubleQuotes . text) (reservedWords cf)))
+    indent = nest 2 . vcat
     prLexRule (reg,ltype) =
-        parens ("r" <> quotes (pyRegex reg) <> "," <+> pyToken ltype) <> ","
+        brackets $ hsep $ punctuate "," [
+            doubleQuotes (ptext $ pyToken ltype),
+            escapedDoubleQuotes (regex reg)]
     pyToken LexComment = "Comment"
     pyToken LexSymbols = "Operator"
-    pyToken (LexToken "Integer") = "Number.Integer"
-    pyToken (LexToken "Double") = "Number.Float"
-    pyToken (LexToken "Char") = "String.Char"
-    pyToken (LexToken "String") = "String.Double"
-    pyToken (LexToken _) = "Name"
+    pyToken (LexToken name) = name
 
+escapedDoubleQuotes s = ptext $ "\"" ++ concatMap f s ++ "\""
+  where
+    f '"' = "\\\""
+    f '\\' = "\\\\"
+    f x = [x]
+
+escapeRegex :: Char -> String
+escapeRegex '\n' = "\\n"
+escapeRegex '\t' = "\\t"
+escapeRegex c | c `elem` ("$^.'[]()|*+?{}\\" :: String) = ['\\',c]
+escapeRegex c = [c]
+
+characterClassRegex :: Reg -> Maybe [String]
+characterClassRegex (RSeqs _)      = Nothing
+characterClassRegex (RAlt r1 r2)   = liftA2 (++) (characterClassRegex r1) (characterClassRegex r2)
+characterClassRegex (RChar c)      = Just [escapeRegex c]
+characterClassRegex (RAny)         = Nothing
+characterClassRegex (RStar re)     = Nothing
+characterClassRegex (RPlus re)     = Nothing
+characterClassRegex (ROpt re)      = Nothing
+characterClassRegex (RSeq r1 r2)   = Nothing
+characterClassRegex (REps)         = Nothing
+characterClassRegex (RAlts cs)     = concat <$> traverse (characterClassRegex . RChar) cs
+characterClassRegex (RDigit)       = Just ["\\d"]
+characterClassRegex (RUpper)       = Just ["A-Z"]
+characterClassRegex (RLower)       = Just ["a-z"]
+characterClassRegex (RLetter)      = Just ["a-zA-Z"]
+characterClassRegex (RMinus r1 r2) = Nothing
 
 
 -- | Convert a Reg to a python regex
@@ -127,28 +112,28 @@ lexer name cf = vcat
 -- (.)(?<!\d)
 -- >>> pyRegex (RSeq (RAlt (RChar 'a') RAny) (RAlt (RChar 'b') (RChar 'c')))
 -- (a|.)(b|c)
-pyRegex :: Reg -> Doc
-pyRegex reg = case reg of
-    RSeqs s       -> text (concatMap escape s)
-    RAlt r1 r2    -> pyRegex r1 <> "|" <> pyRegex r2
-    RChar c       -> text (escape c)
-    RAny          -> char '.'
-    RStar RAny    -> ".*"
-    RStar re      -> parens (pyRegex re) <> char '*'
-    RPlus re      -> parens (pyRegex re) <> char '+'
-    ROpt re       -> parens (pyRegex re) <> char '?'
-    RSeq r1 r2    -> pyRegex' r1 <> pyRegex' r2
-    REps          -> empty
-    RAlts cs      -> brackets (hcat (map (pyRegex . RChar) cs))
-    RDigit        -> "\\d"
-    RUpper        -> "[A-Z]"
-    RLower        -> "[a-z]"
-    RLetter       -> "[a-zA-Z]"
-    RMinus r1 r2  -> parens (pyRegex r1) <> parens ("?<!" <> pyRegex r2)
-  where
-    escape '\n' = "\\n"
-    escape '\t' = "\\t"
-    escape c | c `elem` (".'[]()|*+?{}\\" :: String) = ['\\',c]
-    escape c = [c]
-    pyRegex' r@(RAlt{}) = parens (pyRegex r)
-    pyRegex' r = pyRegex r
+regex :: Reg -> String
+regex (characterClassRegex -> Just [[c]]) = [c]
+regex (characterClassRegex -> Just [['\\', c]]) = ['\\', c]
+regex (characterClassRegex -> Just classes) = "[" ++ concat classes ++ "]"
+regex (RMinus RAny (characterClassRegex -> Just classes)) = "[^" ++ concat classes ++ "]"
+regex (RSeqs s)       = concatMap escapeRegex s
+regex (RAlt r1 r2)    = "(?:" ++ regex r1 ++ "|" ++ regex r2 ++ ")"
+regex (RChar c)       = escapeRegex c
+regex (RAny)          = "."
+regex (RStar RAny)    = ".*"
+regex (RPlus RAny)    = ".+"
+regex (RStar re)      = regex' re ++ "*"
+regex (RPlus re)      = regex' re ++ "+"
+regex (ROpt re)       = regex' re ++ "?"
+regex (RSeq r1 r2)    = regex r1 ++ regex r2
+regex (REps)          = ""
+regex (RMinus r without) = regex' r ++ regexNegative (regex without)
+
+regex _ = undefined
+
+regex' r = "(?:" ++ regex r ++ ")"
+regexNegative r = "(?<!" ++ r ++ ")"
+
+
+-- TODO: think about precedence

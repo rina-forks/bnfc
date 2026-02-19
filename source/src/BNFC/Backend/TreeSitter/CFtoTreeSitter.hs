@@ -13,20 +13,27 @@
 
 module BNFC.Backend.TreeSitter.CFtoTreeSitter where
 
-import BNFC.Abs (Reg (RSeq, RSeqs, RStar, RAny))
+import BNFC.Abs (Reg)
 import BNFC.Backend.TreeSitter.RegToJSReg
+import BNFC.Backend.TreeSitter.MatchesEmpty(fixPointKnownEmpty, transformEmptyMatches, KnownEmpty, OptSym(..), OptSentForm, isKnownEmpty)
 import BNFC.CF
-import BNFC.Lexing (mkRegMultilineComment)
+import BNFC.Lexing (mkRegMultilineComment, mkRegSingleLineComment)
 import BNFC.PrettyPrint
+
 import Prelude hiding ((<>))
+import Control.Applicative ((<|>))
+
+import qualified Data.List as List
+import qualified Data.Maybe as Maybe
+import qualified Data.List.NonEmpty as List1
 
 -- | Indent one level of 2 spaces
 indent :: Doc -> Doc
 indent = nest 2
 
 -- | Create content of grammar.js file
-cfToTreeSitter :: String -> CF -> Doc
-cfToTreeSitter name cf =
+cfToTreeSitter :: String -> Cat -> CF -> Doc
+cfToTreeSitter name wordCat cf =
   -- Overall structure of grammar.js
   text "module.exports = grammar({"
     $+$ indent
@@ -38,7 +45,7 @@ cfToTreeSitter name cf =
     $+$ text "});"
   where
     extrasSection = prExtras cf
-    wordSection = prWord cf
+    wordSection = prWord wordCat cf
     rulesSection =
       text "rules: {"
         $+$ indent
@@ -67,8 +74,8 @@ prExtras cf =
     (commentMRules, commentSRules) = comments cf
     mRules = vcat' $ map mkOneMRule commentMRules
     sRules = vcat' $ map mkOneSRule commentSRules
-    mkOneSRule s = text (printRegJSReg $ RSeq (RSeqs s) (RStar RAny)) <> text ","
-    mkOneMRule (s, e) = text (printRegJSReg $ mkRegMultilineComment s e) <> text ","
+    mkOneSRule s = text (printRegJSReg $ mkRegSingleLineComment s) <> ","
+    mkOneMRule (s, e) = text (printRegJSReg $ mkRegMultilineComment s e) <> ","
 
 -- | Print word section, this section is needed for tree-sitter
 --   to do keyword extraction before any parsing/lexing, see
@@ -78,25 +85,17 @@ prExtras cf =
 --   we should enumerate all defined tokens against all occurrences of
 --   keywords. Any tokens patterns that could accept a keyword will go
 --   into this list. This will require integration of a regex engine.
-prWord :: CF -> Doc
-prWord cf =
-  if wordNeeded
-    then
+prWord :: Cat -> CF -> Doc
+prWord wordCat cf =
+  if not wordCatValid then
+    error "specified tree-sitter word token not found in BNFC grammar"
+  else
+    if isUsedCat cf wordCat then
       defineSymbol "word"
-        $+$ indent
-          ( wrapChoice
-              ( usrTokensFormatted
-                  ++ [text "$.token_Ident" | identUsed]
-              )
-          )
-          <> ","
+        <+> formatSent [NonOptional (Left wordCat)] <> ","
     else empty
   where
-    wordNeeded = identUsed || usrTokens /= []
-    identUsed = isUsedCat cf (TokenCat catIdent)
-    usrTokens = tokenPragmas cf
-    usrTokensFormatted =
-      map (text . refName . formatCatName False . TokenCat . fst) $ usrTokens
+    wordCatValid = wordCat == TokenCat catIdent || wordCat `elem` allParserCats cf
 
 -- | Print builtin token rules according to their usage
 prBuiltinTokenRules :: CF -> Doc
@@ -120,30 +119,37 @@ stringRule =
 identRule =
   defineSymbol "token_Ident" <+> text "/[a-zA-Z][a-zA-Z\\d_']*/" <> ","
 
--- | First print the entrypoint rule, tree-sitter always use the
---   first rule as entrypoint and does not support multi-entrypoint.
---   Then print rest of the rules
+-- | Prints the rules in the grammar with the entry point first.
+--
+-- Since Treesitter requires a unique entry point, this will build a "virtual"
+-- entry point which dispatches to each of the declared BNFC entry points via
+-- a choice list. Additionally, the virtual entry point can be marked optional
+-- (and is the only rule which can be).
 prRules :: CF -> Doc
 prRules cf =
-  if onlyOneEntry
-    then
-      prOneCat entryRules entryCat
-        $+$ prOtherRules entryCat cf
-    else error "Tree-sitter only supports one entrypoint"
+  prOneCat knownEmpty wrapEntry virtEntryCat virtEntryRhsRules
+    $+$ vcat' (map (uncurry (prOneCat knownEmpty id)) allGroups)
   where
-    --If entrypoint is defined, there must be only one entrypoint
-    --If it is not defined, defaults to use the first rule as entrypoint
-    onlyOneEntry = not (hasEntryPoint cf) || onlyOneEntryDefined
-    onlyOneEntryDefined = length (allEntryPoints cf) == 1
-    entryCat = firstEntry cf
-    entryRules = rulesForCat' cf entryCat
+    wrapEntry =
+      if any ((`isKnownEmpty` knownEmpty) . Left) virtEntryRhsCats then
+        wrapOptional'
+      else
+        id
 
--- | Print all other rules except the entrypoint
-prOtherRules :: Cat -> CF -> Doc
-prOtherRules entryCat cf = vcat' $ map mkOne rules
-  where
-    rules = [(c, r) | (c, r) <- ruleGroupsInternals cf, c /= entryCat]
-    mkOne (cat, rules) = prOneCat rules cat
+    allGroups = ruleGroupsInternals cf
+
+    virtEntryCat = Cat "BNFCStart"
+    virtEntryRhsCats = List1.toList (allEntryPoints cf)
+    virtEntryRhsRules = toVirtRule <$> virtEntryRhsCats
+
+    toVirtRule rhsCat =
+      npRule
+        (identCat virtEntryCat ++ identCat rhsCat)
+        virtEntryCat
+        [Left rhsCat]
+        Parsable
+
+    knownEmpty = fixPointKnownEmpty allGroups
 
 prUsrTokenRules :: CF -> Doc
 prUsrTokenRules cf = vcat' $ map prOneToken tokens
@@ -159,21 +165,55 @@ hasInternal = not . all isParsable
 -- If the non-terminal has internal rules, an internal version of the non-terminal
 -- will be created (prefixed with "_" in tree-sitter), and all internal rules will
 -- be sectioned as such.
-prOneCat :: [Rule] -> NonTerminal -> Doc
-prOneCat rules nt =
+prOneCat :: KnownEmpty -> (Doc -> Doc) -> NonTerminal -> [Rule] -> Doc
+
+prOneCat _ wrapRhs nt@(ListCat _) rules | enable =
   defineSymbol (formatCatName False nt)
-    $+$ indent (appendComma parRhs)
-    $+$ internalRules
+    $+$ (indent . appendComma . wrapRhs $
+      case (,) <$> singletonOrNilRule <*> consRule of
+        -- empty separator/terminator case.
+        Just ([_], [x, _rec]) -> wrp "repeat1" (fmt [x])
+        Just ([], [x, _rec]) -> wrp "repeat1" (fmt [x]) -- empty match eliminated
+
+        -- possibly-empty separator list, non-empty separator
+        Just ([_], [x, sep, _rec]) -> wrapSeq [fmt [x], wrp "repeat" (fmt [sep, x])]
+
+        -- non-empty terminator list, non-empty terminator
+        Just ([_, _], [x, sep, _rec]) -> wrp "repeat1" (fmt [x, sep])
+        -- possibly-empty terminator list, non-empty terminator
+        Just ([], [x, sep, _rec]) -> wrp "repeat1" (fmt [x, sep])
+
+        _ -> error "treesitter: unexpected singletonRule/consRule combination")
   where
-    int = hasInternal rules
-    internalRules =
-      if int
-        then defineSymbol (formatCatName True nt) $+$ indent (appendComma intRhs)
-        else empty
-    parRhs = wrapChoice $ transChoice ++ genChoice (filter isParsable rules)
-    transChoice = [text $ refName $ formatCatName True nt | int]
-    intRhs = wrapChoice $ genChoice (filter (not . isParsable) rules)
-    genChoice = map (wrapSeq . formatRhs . rhsRule)
+    enable = Maybe.isJust singletonOrNilRule && Maybe.isJust consRule
+
+    nilRule = rhsRule <$> List.find isNilFun rules
+    singletonRule = rhsRule <$> List.find isOneFun rules
+    consRule = rhsRule <$> List.find isConsFun rules
+    singletonOrNilRule = singletonRule <|> nilRule
+
+    fmt = formatSent . map NonOptional
+    wrp s = wrapFun s False
+
+prOneCat knownEmpty wrapRhs nt rules =
+  defineSymbol (formatCatName False nt)
+    $+$ indentCommaChoice (wrapRhs parRhs)
+    $+$
+      (if hasInternal
+        then defineSymbol (formatCatName True nt) $+$ indentCommaChoice intRhs
+        else empty)
+  where
+    (parsableRules, internalRules) = List.partition isParsable rules
+    hasInternal = not (null internalRules)
+
+    indentCommaChoice = indent . appendComma
+
+    internalTokenName = [text $ refName $ formatCatName True nt | hasInternal]
+    parRhs = wrapChoice (internalTokenName ++ genChoice parsableRules)
+    intRhs = wrapChoice (genChoice internalRules)
+
+    genChoice = map (formatRhs . transformEmptyMatches knownEmpty . rhsRule)
+
 
 -- | Generate one tree-sitter rule for one defined token
 prOneToken :: (TokenCat, Reg) -> Doc
@@ -192,10 +232,11 @@ commaJoin :: Bool -> [Doc] -> Doc
 commaJoin newline =
   foldl comma empty
   where
+    commaString = if newline then "," else ", "
     comma a b
       | isEmpty a = b
       | isEmpty b = a
-      | otherwise = (if newline then ($+$) else (<>)) (a <> ",") b
+      | otherwise = (if newline then ($+$) else (<>)) (a <> commaString) b
 
 wrapSeq :: [Doc] -> Doc
 wrapSeq = wrapOptListFun "seq" False
@@ -203,29 +244,41 @@ wrapSeq = wrapOptListFun "seq" False
 wrapChoice :: [Doc] -> Doc
 wrapChoice = wrapOptListFun "choice" True
 
+wrapOptional :: Doc -> Doc
+wrapOptional = wrapFun "optional" False
+
+wrapOptional' :: Doc -> Doc
+wrapOptional' = wrapFun "optional" True
+
 -- | Wrap list using tree-sitter fun if the list contains multiple items
 -- Returns the only item without wrapping otherwise
 wrapOptListFun :: String -> Bool -> [Doc] -> Doc
-wrapOptListFun fun newline list =
-  if length list == 1
-    then head list
-    else wrapFun fun newline (commaJoin newline list)
+wrapOptListFun _   _ [x] = x
+wrapOptListFun fun _ [ ] = wrapFun fun False empty
+wrapOptListFun fun newline list = wrapFun fun newline (commaJoin newline list)
 
 wrapFun :: String -> Bool -> Doc -> Doc
-wrapFun fun newline arg = joinOp [text fun <> text "(", indent arg, text ")"]
+wrapFun fun newline arg = joinOp [text fun <> text "(", indentOp arg, text ")"]
   where
     joinOp = if newline then vcat' else hcat
+    indentOp = if newline then indent else id
 
 -- | Helper for referring to non-terminal names in tree-sitter
 refName :: String -> String
 refName = ("$." ++)
 
 -- | Format right hand side into list of strings
-formatRhs :: SentForm -> [Doc]
-formatRhs =
-  map (\case
-    Left c -> text $ refName $ formatCatName False c
-    Right term -> quoted term)
+formatRhs :: [OptSentForm] -> Doc
+formatRhs = wrapChoice . map formatSent
+
+formatSent :: OptSentForm -> Doc
+formatSent = wrapSeq . map fmtOpt
+  where
+    fmtOpt (Optional x) = wrapOptional (fmt x)
+    fmtOpt (NonOptional x) = fmt x
+
+    fmt (Left c) = text $ refName $ formatCatName False c
+    fmt (Right term) = quoted term
 
 quoted :: String -> Doc
 quoted s = text "\"" <> text s <> text "\""

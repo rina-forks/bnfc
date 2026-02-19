@@ -24,6 +24,7 @@ import BNFC.Backend.HaskellGADT
 import BNFC.Backend.Java
 import BNFC.Backend.Latex
 import BNFC.Backend.OCaml
+import BNFC.Backend.Json
 import BNFC.Backend.Pygments
 import BNFC.Backend.TreeSitter
 import BNFC.CF (CF)
@@ -81,5 +82,6 @@ maketarget = \case
     TargetJava         -> makeJava
     TargetOCaml        -> makeOCaml
     TargetPygments     -> makePygments
+    TargetJson         -> makeJson
     TargetCheck        -> error "impossible"
     TargetTreeSitter   -> makeTreeSitter

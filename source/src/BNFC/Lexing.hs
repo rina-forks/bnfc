@@ -1,7 +1,10 @@
 {-# LANGUAGE PatternGuards #-}
 
 module BNFC.Lexing
-    ( mkLexer, LexType(..), mkRegMultilineComment
+    ( mkLexer
+    , LexType(..)
+    , mkRegMultilineComment
+    , mkRegSingleLineComment
     , debugPrint -- to avoid warning about unused definition
     ) where
 

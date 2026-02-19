@@ -42,9 +42,9 @@ lexer name cf = vcat
     prLexRule (reg,ltype) =
         brackets $ hsep $ punctuate "," [
             doubleQuotes (ptext $ pyToken ltype),
-            escapedDoubleQuotes (regex reg)]
+            escapedDoubleQuotes (prt 0 reg)]
     pyToken LexComment = "Comment"
-    pyToken LexSymbols = "Operator"
+    pyToken LexSymbols = "Symbols"
     pyToken (LexToken name) = name
 
 escapedDoubleQuotes s = ptext $ "\"" ++ concatMap f s ++ "\""
@@ -56,25 +56,25 @@ escapedDoubleQuotes s = ptext $ "\"" ++ concatMap f s ++ "\""
 escapeRegex :: Char -> String
 escapeRegex '\n' = "\\n"
 escapeRegex '\t' = "\\t"
-escapeRegex c | c `elem` ("$^.[]()|*+?{}\\" :: String) = ['\\',c]
+escapeRegex c | c `elem` ("$^.[]()|*+?{}\\=<>\\" :: String) = ['\\', c]
 escapeRegex c = [c]
 
 characterClassRegex :: Reg -> Maybe [String]
-characterClassRegex (RSeqs _)      = Nothing
-characterClassRegex (RAlt r1 r2)   = liftA2 (++) (characterClassRegex r1) (characterClassRegex r2)
-characterClassRegex (RChar c)      = Just [escapeRegex c]
-characterClassRegex (RAny)         = Nothing
-characterClassRegex (RStar re)     = Nothing
-characterClassRegex (RPlus re)     = Nothing
-characterClassRegex (ROpt re)      = Nothing
-characterClassRegex (RSeq r1 r2)   = Nothing
-characterClassRegex (REps)         = Nothing
-characterClassRegex (RAlts cs)     = concat <$> traverse (characterClassRegex . RChar) cs
-characterClassRegex (RDigit)       = Just ["\\d"]
-characterClassRegex (RUpper)       = Just ["A-Z"]
-characterClassRegex (RLower)       = Just ["a-z"]
-characterClassRegex (RLetter)      = Just ["a-zA-Z"]
-characterClassRegex (RMinus r1 r2) = Nothing
+characterClassRegex (RSeqs _)    = Nothing
+characterClassRegex (RAlt r1 r2) = liftA2 (++) (characterClassRegex r1) (characterClassRegex r2)
+characterClassRegex (RChar c)    = Just [escapeRegex c]
+characterClassRegex (RAny)       = Nothing
+characterClassRegex (RStar _)    = Nothing
+characterClassRegex (RPlus _)    = Nothing
+characterClassRegex (ROpt _)     = Nothing
+characterClassRegex (RSeq _ _)   = Nothing
+characterClassRegex (REps)       = Nothing
+characterClassRegex (RAlts cs)   = concat <$> traverse (characterClassRegex . RChar) cs
+characterClassRegex (RDigit)     = Just ["\\d"]
+characterClassRegex (RUpper)     = Just ["A-Z"]
+characterClassRegex (RLower)     = Just ["a-z"]
+characterClassRegex (RLetter)    = Just ["a-zA-Z"]
+characterClassRegex (RMinus _ _) = Nothing
 
 
 -- | Convert a Reg to a python regex
@@ -112,27 +112,29 @@ characterClassRegex (RMinus r1 r2) = Nothing
 -- (.)(?<!\d)
 -- >>> pyRegex (RSeq (RAlt (RChar 'a') RAny) (RAlt (RChar 'b') (RChar 'c')))
 -- (a|.)(b|c)
-regex :: Reg -> String
-regex (characterClassRegex -> Just [[c]]) = [c]
-regex (characterClassRegex -> Just [['\\', c]]) = ['\\', c]
-regex (characterClassRegex -> Just classes) = "[" ++ concat classes ++ "]"
-regex (RMinus RAny (characterClassRegex -> Just classes)) = "[^" ++ concat classes ++ "]"
-regex (RSeqs s)       = concatMap escapeRegex s
-regex (RAlt r1 r2)    = "(?:" ++ regex r1 ++ "|" ++ regex r2 ++ ")"
-regex (RChar c)       = escapeRegex c
-regex (RAny)          = "."
-regex (RStar RAny)    = ".*"
-regex (RPlus RAny)    = ".+"
-regex (RStar re)      = regex' re ++ "*"
-regex (RPlus re)      = regex' re ++ "+"
-regex (ROpt re)       = regex' re ++ "?"
-regex (RSeq r1 r2)    = regex r1 ++ regex r2
-regex (REps)          = ""
-regex (RMinus r without) = regex' r ++ regexNegative (regex without)
 
-regex _ = undefined
+asPrec :: Int -> Int -> String -> String
+asPrec i j s = if j<i then "(?:" ++ s ++ ")" else s
 
-regex' r = "(?:" ++ regex r ++ ")"
+prt i (characterClassRegex -> Just [[c]]) = [c]
+prt i (characterClassRegex -> Just [['\\', c]]) = ['\\', c]
+prt i (characterClassRegex -> Just classes) = "[" ++ concat classes ++ "]"
+prt i (RMinus RAny (characterClassRegex -> Just classes)) = "[^" ++ concat classes ++ "]"
+prt i (RSeqs s)       = asPrec i 30 $ concatMap escapeRegex s
+prt i (RAlt r1 r2)    = asPrec i 10 $ prt 10 r1 ++ "|" ++ prt 10 r2
+prt i (RChar c)       = escapeRegex c
+prt i (RAny)          = asPrec i 50 "."
+prt i (RStar RAny)    = asPrec i 50 ".*"
+prt i (RPlus RAny)    = asPrec i 50 ".+"
+prt i (RStar re)      = asPrec i 50 $ prt 51 re ++ "*"
+prt i (RPlus re)      = asPrec i 50 $ prt 51 re ++ "+"
+prt i (ROpt re)       = asPrec i 50 $ prt 51 re ++ "?"
+prt i (RSeq r1 r2)    = asPrec i 30 $ prt 30 r1 ++ prt 30 r2
+prt i (REps)          = asPrec i 40 ""
+prt i (RMinus r without) = asPrec i 30 $ prt 51 r ++ regexNegative (prt 0 without)
+
+prt i _ = undefined
+
 regexNegative r = "(?<!" ++ r ++ ")"
 
 

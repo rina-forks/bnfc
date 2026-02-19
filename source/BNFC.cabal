@@ -266,6 +266,9 @@ library
     -- Pygments backend
     BNFC.Backend.Pygments
 
+    -- JSON backend
+    BNFC.Backend.Json
+
     -- Agda backend
     BNFC.Backend.Agda
 

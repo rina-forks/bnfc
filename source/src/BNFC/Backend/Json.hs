@@ -27,27 +27,27 @@ lexer :: String -> CF -> Doc
 lexer name cf = vcat
     [ "{"
     , indent
-        [ doubleQuotes "keywords" <+> ":" <+> brackets keywords <> ","
+        [ doubleQuotes "keywords" <> ":" <+> brackets keywords <> ","
         -- The token is defined using regex
-        , doubleQuotes "tokens" <+> ":" <+> "["
+        , doubleQuotes "tokens" <> ":" <+> "["
         , indent (punctuate "," $ map prLexRule (mkLexer cf))
         , "]"
         ]
     , "}"
     ]
   where
-    className = camelCase name <> "Lexer"
     keywords = fsep (punctuate "," (map (doubleQuotes . text) (reservedWords cf)))
     indent = nest 2 . vcat
     prLexRule (reg,ltype) =
         brackets $ hsep $ punctuate "," [
             doubleQuotes (ptext $ pyToken ltype),
-            escapedDoubleQuotes (prt 0 reg)]
+            ptext $ escapedDoubleQuotes (prt 0 reg)]
     pyToken LexComment = "Comment"
     pyToken LexSymbols = "Symbols"
     pyToken (LexToken name) = name
 
-escapedDoubleQuotes s = ptext $ "\"" ++ concatMap f s ++ "\""
+escapedDoubleQuotes :: Foldable t => t Char -> [Char]
+escapedDoubleQuotes s = "\"" ++ concatMap f s ++ "\""
   where
     f '"' = "\\\""
     f '\\' = "\\\\"
@@ -116,6 +116,7 @@ characterClassRegex (RMinus _ _) = Nothing
 asPrec :: Int -> Int -> String -> String
 asPrec i j s = if j<i then "(?:" ++ s ++ ")" else s
 
+prt :: Int -> Reg -> [Char]
 prt i (characterClassRegex -> Just [[c]]) = [c]
 prt i (characterClassRegex -> Just [['\\', c]]) = ['\\', c]
 prt i (characterClassRegex -> Just classes) = "[" ++ concat classes ++ "]"
@@ -135,7 +136,7 @@ prt i (RMinus r without) = asPrec i 30 $ prt 51 r ++ regexNegative (prt 0 withou
 
 prt i _ = undefined
 
+regexNegative :: [Char] -> [Char]
 regexNegative r = "(?<!" ++ r ++ ")"
 
 
--- TODO: think about precedence

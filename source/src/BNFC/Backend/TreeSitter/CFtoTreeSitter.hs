@@ -263,7 +263,7 @@ prOneCat knownEmpty rules (ListCat cat) | enable =
 
 prOneCat knownEmpty rules nt =
   defineSymbol (formatCatName False nt)
-    $+$ indentChoice parRhs
+    $+$ indentChoice parNtRhs
     $+$
       (if hasInternal
         then defineSymbol (formatCatName True nt) $+$ indentChoice intRhs
@@ -272,14 +272,19 @@ prOneCat knownEmpty rules nt =
     (parsableRules, internalRules) = List.partition isParsable rules
     hasInternal = not $ null internalRules
 
-    indentChoice = indent . appendComma . wrapChoice
+    indentChoice = indent . appendComma
 
     internalTokenName = [text $ refName $ formatCatName True nt | hasInternal]
-    parRhs = internalTokenName ++ genChoice parsableRules
 
-    intRhs = genChoice internalRules
+    -- TODO: test with internal tokens
+    parNtRhs = wrapChoice (internalTokenName ++ [parRhs])
+    parRhs = wrapToken (wrapChoice (genChoices parsableRules))
+    intRhs = wrapToken (wrapChoice (genChoices internalRules))
 
-    genChoice = map (formatRhs . (fixSentence knownEmpty) . rhsRule)
+    genChoices = map (formatRhs . (fixSentence knownEmpty) . rhsRule)
+
+    canBeToken = all (all Either.isRight . rhsRule) rules
+    wrapToken = if canBeToken then wrapFun "token" True else id
 
 
 -- | Generate one tree-sitter rule for one defined token
@@ -340,6 +345,7 @@ formatSent = wrapSeq . map (\(isOpt, x) -> isOptional isOpt (fmt x))
 
     fmt (Left c) = text $ refName $ formatCatName False c
     fmt (Right term) = quoted term
+    -- TODO: detect when tokens can match empty
 
 quoted :: String -> Doc
 quoted s = text "\"" <> text s <> text "\""

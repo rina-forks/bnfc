@@ -1,0 +1,16 @@
+X1. Start ::= "a" [NETerm];
+X2. Start ::= "b" [PETerm];
+X3. Start ::= "c" [PESep];
+X4. Start ::= "d" [NESep];
+
+A.NETerm ::= "a";
+terminator nonempty NETerm ";";
+
+B.PETerm ::= "b";
+terminator PETerm "|";
+
+C.PESep ::= "c";
+separator PESep ",";
+
+D.NESep ::= "d";
+separator nonempty NESep ":";

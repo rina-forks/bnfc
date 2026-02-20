@@ -200,7 +200,7 @@ prRules cf =
   -- Trace.traceShow (possiblyEmptyCats (ruleGroupsInternals cf) Set.empty) $
   if onlyOneEntry
     then
-      prOneCat knownEmpty entryRules entryCat
+      prOneCat knownEmpty (Trace.traceShow (map (render .pretty) entryRules) entryRules) entryCat
         $+$ vcat' (map (uncurry (prOneCat knownEmpty)) otherRules)
     else error "Tree-sitter only supports one entrypoint"
   where

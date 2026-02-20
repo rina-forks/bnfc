@@ -20,6 +20,8 @@ import BNFC.Lexing (mkRegMultilineComment)
 import BNFC.PrettyPrint
 import Prelude hiding ((<>))
 
+import qualified Data.Either as Either
+import qualified Data.Maybe as Maybe
 import qualified Data.List as List
 import qualified Data.Set as Set
 import qualified Debug.Trace as Trace
@@ -126,20 +128,50 @@ identRule =
 
 -- | Possibly empty non-terminals (Cat) or terminals (String, as token name).
 type KnownEmpty = Set.Set (Either Cat String)
+data Optional = Optional | NonOptional deriving (Eq, Show)
+type OptionalSentForm = [(Optional, Either Cat String)]
+
+possiblyEmptyRule :: KnownEmpty -> SentForm -> [Either OptionalSentForm SentForm]
+possiblyEmptyRule knownEmpty sentence =
+  Trace.traceShowId $
+  if sentenceMatchesEmpty then
+    map (Left . makeTailOptional) (List.tails sentence)
+  else
+    [Right sentence]
+  where
+    sentenceMatchesEmpty = all (`Set.member` knownEmpty) sentence
+
+    makeTailOptional (x:xs) = ((NonOptional, x) : map (\x -> (Optional, x)) xs)
+    makeTailOptional [] = []
+
+sequenceOptionalSentForm :: [Either OptionalSentForm SentForm] -> Either [OptionalSentForm] [SentForm]
+sequenceOptionalSentForm eithers =
+  case sequence eithers of
+    Right sents -> Right sents
+    Left _ -> Left (map (either id sentToOptionalSent) eithers)
+  where
+    sentToOptionalSent sent = map (\x -> (NonOptional, x)) sent
+
 
 -- | Returns whether the given Cat with the given Rules could match the empty
 --   string, given the set of currently-known empty things.
-possiblyEmptyCat :: (Cat, [Rule]) -> KnownEmpty -> Bool
-possiblyEmptyCat (cat, rules) knownEmpty = any (\x -> possiblyEmptyRule x knownEmpty) rules
+possiblyEmptyCat :: KnownEmpty -> (Cat, [Rule]) -> Either [OptionalSentForm] [SentForm]
+possiblyEmptyCat knownEmpty (cat, rules) =
+  sequenceOptionalSentForm $ concatMap (possiblyEmptyRule knownEmpty . rhsRule) rules
 
-possiblyEmptyRule :: Rule -> KnownEmpty -> Bool
-possiblyEmptyRule rul knownEmpty = Trace.trace (render $ pretty rul) False
+possiblyEmptyCats :: [(Cat, [Rule])] -> KnownEmpty -> KnownEmpty
+possiblyEmptyCats cats knownEmpty =
+  Set.fromList (map (Left . fst) newEmpties)
+    `Set.union` knownEmpty
+  where
+    newEmpties = filter (Either.isLeft . possiblyEmptyCat knownEmpty) cats
 
 -- | First print the entrypoint rule, tree-sitter always use the
 --   first rule as entrypoint and does not support multi-entrypoint.
 --   Then print rest of the rules
 prRules :: CF -> Doc
 prRules cf =
+  Trace.traceShow (possiblyEmptyCats (ruleGroupsInternals cf) Set.empty) $
   if onlyOneEntry
     then
       prOneCat entryRules entryCat
@@ -172,13 +204,12 @@ hasInternal = not . all isParsable
 -- be sectioned as such.
 prOneCat :: [Rule] -> NonTerminal -> Doc
 prOneCat rules nt =
-  possiblyEmptyCat (nt, rules) Set.empty `seq`
-  (defineSymbol (formatCatName False nt)
+  defineSymbol (formatCatName False nt)
     $+$ indent (appendComma parRhs)
     $+$
       (if hasInternal
         then defineSymbol (formatCatName True nt) $+$ indent (appendComma intRhs)
-        else empty))
+        else empty)
   where
     (parsableRules, internalRules) = List.partition isParsable rules
     hasInternal = not $ null internalRules

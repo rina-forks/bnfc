@@ -63,11 +63,9 @@ module.exports = grammar({
     BVVal: $ =>
       seq($.IntVal,":",$.BVType),
     Endian: $ =>
-      token(
-        choice(
-          "le",
-          "be"
-        )
+      choice(
+        "le",
+        "be"
       ),
     Assignment: $ =>
       seq($.LVar,":=",$.Expr),
@@ -223,95 +221,77 @@ module.exports = grammar({
         "booltobv1"
       ),
     EqOp: $ =>
-      token(
-        choice(
-          "eq",
-          "neq"
-        )
+      choice(
+        "eq",
+        "neq"
       ),
     BVUnOp: $ =>
-      token(
-        choice(
-          "bvnot",
-          "bvneg"
-        )
+      choice(
+        "bvnot",
+        "bvneg"
       ),
     BVBinOp: $ =>
-      token(
-        choice(
-          "bvand",
-          "bvor",
-          "bvadd",
-          "bvmul",
-          "bvudiv",
-          "bvurem",
-          "bvshl",
-          "bvlshr",
-          "bvnand",
-          "bvnor",
-          "bvxor",
-          "bvxnor",
-          "bvcomp",
-          "bvsub",
-          "bvsdiv",
-          "bvsrem",
-          "bvsmod",
-          "bvashr"
-        )
+      choice(
+        "bvand",
+        "bvor",
+        "bvadd",
+        "bvmul",
+        "bvudiv",
+        "bvurem",
+        "bvshl",
+        "bvlshr",
+        "bvnand",
+        "bvnor",
+        "bvxor",
+        "bvxnor",
+        "bvcomp",
+        "bvsub",
+        "bvsdiv",
+        "bvsrem",
+        "bvsmod",
+        "bvashr"
       ),
     BVLogicalBinOp: $ =>
-      token(
-        choice(
-          "bvule",
-          "bvugt",
-          "bvuge",
-          "bvult",
-          "bvslt",
-          "bvsle",
-          "bvsgt",
-          "bvsge"
-        )
+      choice(
+        "bvule",
+        "bvugt",
+        "bvuge",
+        "bvult",
+        "bvslt",
+        "bvsle",
+        "bvsgt",
+        "bvsge"
       ),
     IntBinOp: $ =>
-      token(
-        choice(
-          "intadd",
-          "intmul",
-          "intsub",
-          "intdiv",
-          "intmod"
-        )
+      choice(
+        "intadd",
+        "intmul",
+        "intsub",
+        "intdiv",
+        "intmod"
       ),
     IntLogicalBinOp: $ =>
-      token(
-        choice(
-          "intlt",
-          "intle",
-          "intgt",
-          "intge"
-        )
+      choice(
+        "intlt",
+        "intle",
+        "intgt",
+        "intge"
       ),
     BoolBinOp: $ =>
-      token(
-        choice(
-          "booland",
-          "boolor",
-          "boolimplies"
-        )
+      choice(
+        "booland",
+        "boolor",
+        "boolimplies"
       ),
     RequireTok: $ =>
-      token(
-        choice(
-          "require",
-          "requires"
-        )
+      choice(
+        "require",
+        "requires"
       ),
     EnsureTok: $ =>
-      token(
-        choice(
-          "ensure",
-          "ensures"
-        )
+      choice(
+        "ensure",
+        "ensures"
       ),
     FunSpec: $ =>
       choice(

@@ -149,14 +149,16 @@ Block_Phi . Block ::= "block" BlockIdent AttribSet BeginList
   EndList ;
 
 rules AttrKeyValue ::= BIdent "=" Attr ;
-separator AttrKeyValue ";";
+separator nonempty AttrKeyValue ";";
 
-AttribSet_Some . AttribSet ::= BeginRec [ AttrKeyValue ] Semicolons EndRec;
+rules ListAttrKeyValue ::= [AttrKeyValue] Semicolons | ;
+
+AttribSet_Some . AttribSet ::= BeginRec ListAttrKeyValue EndRec;
 AttribSet_Empty . AttribSet ::= "" ;
 
 separator Attr ";" ;
 
-Attr_Map . Attr ::= BeginRec [ AttrKeyValue ] Semicolons EndRec ; 
+Attr_Map . Attr ::= BeginRec ListAttrKeyValue EndRec ; 
 Attr_List . Attr ::= BeginList [ Attr ] EndList; 
 Attr_Lit . Attr ::= Value ; 
 Attr_Str . Attr ::= Str ; 

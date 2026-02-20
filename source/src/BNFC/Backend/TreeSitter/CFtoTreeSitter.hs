@@ -131,6 +131,10 @@ type KnownEmpty = Set.Set (Either Cat String)
 data Optional = Optional | NonOptional deriving (Eq, Show)
 type OptionalSentForm = [(Optional, Either Cat String)]
 
+-- TODO: if we have a rule like X ::= "" | "A", then we need to go Left []
+-- for the first one to indicate that it DOES match empty and indicate that
+-- there is nothing remaining if empty is removed.
+
 possiblyEmptyRule :: KnownEmpty -> SentForm -> [Either OptionalSentForm SentForm]
 possiblyEmptyRule knownEmpty sentence =
   Trace.traceShowId $
@@ -149,9 +153,9 @@ sequenceOptionalSentForm eithers =
   case sequence eithers of
     Right sents -> Right sents
     Left _ -> Left (map (either id sentToOptionalSent) eithers)
-  where
-    sentToOptionalSent sent = map (\x -> (NonOptional, x)) sent
 
+sentToOptionalSent :: SentForm -> OptionalSentForm
+sentToOptionalSent = map (\x -> (NonOptional, x))
 
 -- | Returns whether the given Cat with the given Rules could match the empty
 --   string, given the set of currently-known empty things.
@@ -166,16 +170,37 @@ possiblyEmptyCats cats knownEmpty =
   where
     newEmpties = filter (Either.isLeft . possiblyEmptyCat knownEmpty) cats
 
+fixPointKnownEmpty :: [(Cat, [Rule])] -> KnownEmpty
+fixPointKnownEmpty cats =
+  case fixPoint of
+    Just knownEmpty -> knownEmpty
+    Nothing -> error "impossible due to fix point iteration"
+  where
+    knownEmptySeq = iterate (possiblyEmptyCats cats) Set.empty
+
+    fixPoint = fst <$> List.find (uncurry (==)) (knownEmptySeq `zip` drop 1 knownEmptySeq)
+
+applyOptionals :: KnownEmpty -> OptionalSentForm -> OptionalSentForm
+applyOptionals knownEmpty = map apply
+  where
+    apply (Optional, x) = (Optional, x)
+    apply (NonOptional, x) = (if x `Set.member` knownEmpty then Optional else NonOptional, x)
+
+fixSentence :: KnownEmpty -> SentForm -> [OptionalSentForm]
+fixSentence knownEmpty =
+  map (applyOptionals knownEmpty . either id sentToOptionalSent)
+    . possiblyEmptyRule knownEmpty
+
 -- | First print the entrypoint rule, tree-sitter always use the
 --   first rule as entrypoint and does not support multi-entrypoint.
 --   Then print rest of the rules
 prRules :: CF -> Doc
 prRules cf =
-  Trace.traceShow (possiblyEmptyCats (ruleGroupsInternals cf) Set.empty) $
+  -- Trace.traceShow (possiblyEmptyCats (ruleGroupsInternals cf) Set.empty) $
   if onlyOneEntry
     then
-      prOneCat entryRules entryCat
-        $+$ vcat' (map (uncurry prOneCat) otherRules)
+      prOneCat knownEmpty entryRules entryCat
+        $+$ vcat' (map (uncurry (prOneCat knownEmpty)) otherRules)
     else error "Tree-sitter only supports one entrypoint"
   where
     --If entrypoint is defined, there must be only one entrypoint
@@ -187,6 +212,8 @@ prRules cf =
     entryRules = rulesForCat' cf entryCat
 
     otherRules = [(rs, c) | (c, rs) <- ruleGroupsInternals cf, c /= entryCat]
+
+    knownEmpty = fixPointKnownEmpty (ruleGroupsInternals cf)
 
 prUsrTokenRules :: CF -> Doc
 prUsrTokenRules cf = vcat' $ map prOneToken tokens
@@ -202,23 +229,26 @@ hasInternal = not . all isParsable
 -- If the non-terminal has internal rules, an internal version of the non-terminal
 -- will be created (prefixed with "_" in tree-sitter), and all internal rules will
 -- be sectioned as such.
-prOneCat :: [Rule] -> NonTerminal -> Doc
-prOneCat rules nt =
+prOneCat :: KnownEmpty -> [Rule] -> NonTerminal -> Doc
+prOneCat knownEmpty rules nt =
   defineSymbol (formatCatName False nt)
-    $+$ indent (appendComma parRhs)
+    $+$ indentChoice parRhs
     $+$
       (if hasInternal
-        then defineSymbol (formatCatName True nt) $+$ indent (appendComma intRhs)
+        then defineSymbol (formatCatName True nt) $+$ indentChoice intRhs
         else empty)
   where
     (parsableRules, internalRules) = List.partition isParsable rules
     hasInternal = not $ null internalRules
 
-    parRhs = wrapChoice $ transChoice ++ genChoice parsableRules
+    indentChoice = indent . appendComma . wrapChoice
 
-    transChoice = [text $ refName $ formatCatName True nt | hasInternal]
-    intRhs = wrapChoice $ genChoice internalRules
-    genChoice = map (wrapSeq . formatRhs . rhsRule)
+    internalTokenName = [text $ refName $ formatCatName True nt | hasInternal]
+    parRhs = internalTokenName ++ genChoice parsableRules
+
+    intRhs = genChoice internalRules
+
+    genChoice = map (formatRhs . (fixSentence knownEmpty) . rhsRule)
 
 -- | Generate one tree-sitter rule for one defined token
 prOneToken :: (TokenCat, Reg) -> Doc
@@ -264,11 +294,17 @@ refName :: String -> String
 refName = ("$." ++)
 
 -- | Format right hand side into list of strings
-formatRhs :: SentForm -> [Doc]
-formatRhs =
-  map (\case
-    Left c -> text $ refName $ formatCatName False c
-    Right term -> quoted term)
+formatRhs :: [OptionalSentForm] -> Doc
+formatRhs = wrapChoice . map formatSent
+
+formatSent :: OptionalSentForm -> Doc
+formatSent = wrapSeq . map (\(isOpt, x) -> isOptional isOpt (fmt x))
+  where
+    isOptional Optional = wrapFun "optional" False
+    isOptional NonOptional = id
+
+    fmt (Left c) = text $ refName $ formatCatName False c
+    fmt (Right term) = quoted term
 
 quoted :: String -> Doc
 quoted s = text "\"" <> text s <> text "\""

@@ -28,45 +28,48 @@ module.exports = grammar({
     ),
   rules: {
     Module: $ =>
-      $.list_Decl,
+      choice(
+        optional($.list_Decl),
+        seq()
+      ),
     list_Decl: $ =>
       choice(
         seq(),
-        seq($.Decl,";",$.list_Decl)
+        seq($.Decl,";",optional($.list_Decl))
       ),
     list_token_BlockIdent: $ =>
       choice(
         seq(),
         $.token_BlockIdent,
-        seq($.token_BlockIdent,",",$.list_token_BlockIdent)
+        seq($.token_BlockIdent,",",optional($.list_token_BlockIdent))
       ),
     Semicolons: $ =>
       choice(
         seq(),
-        seq($.Semicolons,";")
+        seq(optional($.Semicolons),";")
       ),
     Decl: $ =>
       choice(
-        seq("axiom",$.AttribSet,$.Expr),
+        seq("axiom",optional($.AttribSet),$.Expr),
         seq("memory","shared",$.token_GlobalIdent,":",$.Type),
         seq("memory",$.token_GlobalIdent,":",$.Type),
         seq("var",$.token_GlobalIdent,":",$.Type),
-        seq("declare-fun",$.AttribSet,$.token_GlobalIdent,":","(",$.list_Type,")","->",$.Type),
-        seq("define-fun",$.AttribSet,$.token_GlobalIdent,"(",$.list_Params,")","->",$.Type,"=",$.Expr),
-        seq("prog","entry",$.token_ProcIdent,$.AttribSet),
-        seq("prog","entry",$.token_ProcIdent,$.AttribSet,$.token_BeginList,$.list_ProgSpec,$.token_EndList),
-        seq("proc",$.token_ProcIdent,"(",$.list_Params,")","->","(",$.list_Params,")",$.AttribSet,$.list_FunSpec,$.ProcDef)
+        seq("declare-fun",optional($.AttribSet),$.token_GlobalIdent,":","(",optional($.list_Type),")","->",$.Type),
+        seq("define-fun",optional($.AttribSet),$.token_GlobalIdent,"(",optional($.list_Params),")","->",$.Type,"=",$.Expr),
+        seq("prog","entry",$.token_ProcIdent,optional($.AttribSet)),
+        seq("prog","entry",$.token_ProcIdent,optional($.AttribSet),$.token_BeginList,optional($.list_ProgSpec),$.token_EndList),
+        seq("proc",$.token_ProcIdent,"(",optional($.list_Params),")","->","(",optional($.list_Params),")",optional($.AttribSet),optional($.list_FunSpec),optional($.ProcDef))
       ),
     list_Type: $ =>
       choice(
         seq(),
         $.Type,
-        seq($.Type,",",$.list_Type)
+        seq($.Type,",",optional($.list_Type))
       ),
     ProcDef: $ =>
       choice(
         seq(),
-        seq($.token_BeginList,$.list_Block,$.token_EndList)
+        seq($.token_BeginList,optional($.list_Block),$.token_EndList)
       ),
     IntType: $ =>
       $.token_INTTYPE,
@@ -87,7 +90,7 @@ module.exports = grammar({
       choice(
         seq(),
         $.Expr,
-        seq($.Expr,",",$.list_Expr)
+        seq($.Expr,",",optional($.list_Expr))
       ),
     IntVal: $ =>
       choice(
@@ -112,7 +115,7 @@ module.exports = grammar({
         seq("store",$.Endian,$.token_GlobalIdent,$.Expr,$.Expr,$.IntVal),
         seq($.LVar,":=","load",$.Endian,$.Var,$.Expr,$.IntVal),
         seq($.LVar,":=","store",$.Endian,$.Var,$.Expr,$.Expr,$.IntVal),
-        seq($.LVars,"call",$.token_ProcIdent,"(",$.CallParams,")"),
+        seq(optional($.LVars),"call",$.token_ProcIdent,"(",optional($.CallParams),")"),
         seq("indirect","call",$.Expr),
         seq("assume",$.Expr),
         seq("guard",$.Expr),
@@ -143,14 +146,14 @@ module.exports = grammar({
       choice(
         seq(),
         $.NamedCallReturn,
-        seq($.NamedCallReturn,",",$.list_NamedCallReturn)
+        seq($.NamedCallReturn,",",optional($.list_NamedCallReturn))
       ),
     LVars: $ =>
       choice(
         seq(),
         seq("var","(",$.list_LocalVar,")",":="),
         seq("(",$.list_LVar,")",":="),
-        seq("(",$.list_NamedCallReturn,")",":=")
+        seq("(",optional($.list_NamedCallReturn),")",":=")
       ),
     NamedCallArg: $ =>
       seq($.token_LocalIdent,"=",$.Expr),
@@ -158,18 +161,24 @@ module.exports = grammar({
       choice(
         seq(),
         $.NamedCallArg,
-        seq($.NamedCallArg,",",$.list_NamedCallArg)
+        seq($.NamedCallArg,",",optional($.list_NamedCallArg))
       ),
     CallParams: $ =>
       choice(
-        $.list_Expr,
-        $.list_NamedCallArg
+        choice(
+          optional($.list_Expr),
+          seq()
+        ),
+        choice(
+          optional($.list_NamedCallArg),
+          seq()
+        )
       ),
     Jump: $ =>
       choice(
-        seq("goto","(",$.list_token_BlockIdent,")"),
+        seq("goto","(",optional($.list_token_BlockIdent),")"),
         "unreachable",
-        seq("return","(",$.list_Expr,")"),
+        seq("return","(",optional($.list_Expr),")"),
         "return"
       ),
     LVar: $ =>
@@ -186,37 +195,37 @@ module.exports = grammar({
       choice(
         seq(),
         $.Block,
-        seq($.Block,";",$.list_Block)
+        seq($.Block,";",optional($.list_Block))
       ),
     StmtWithAttrib: $ =>
-      seq($.Stmt,$.AttribSet),
+      seq($.Stmt,optional($.AttribSet)),
     list_StmtWithAttrib: $ =>
       choice(
         seq(),
-        seq($.StmtWithAttrib,";",$.list_StmtWithAttrib)
+        seq($.StmtWithAttrib,";",optional($.list_StmtWithAttrib))
       ),
     JumpWithAttrib: $ =>
-      seq($.Jump,$.AttribSet),
+      seq($.Jump,optional($.AttribSet)),
     PhiExpr: $ =>
       seq($.token_BlockIdent,"->",$.Var),
     list_PhiExpr: $ =>
       choice(
         seq(),
         $.PhiExpr,
-        seq($.PhiExpr,",",$.list_PhiExpr)
+        seq($.PhiExpr,",",optional($.list_PhiExpr))
       ),
     PhiAssign: $ =>
-      seq($.LVar,":=","phi","(",$.list_PhiExpr,")"),
+      seq($.LVar,":=","phi","(",optional($.list_PhiExpr),")"),
     list_PhiAssign: $ =>
       choice(
         seq(),
         $.PhiAssign,
-        seq($.PhiAssign,",",$.list_PhiAssign)
+        seq($.PhiAssign,",",optional($.list_PhiAssign))
       ),
     Block: $ =>
       choice(
-        seq("block",$.token_BlockIdent,$.AttribSet,$.token_BeginList,$.list_StmtWithAttrib,$.JumpWithAttrib,";",$.token_EndList),
-        seq("block",$.token_BlockIdent,$.AttribSet,$.token_BeginList,"(",$.list_PhiAssign,")",";",$.list_StmtWithAttrib,$.JumpWithAttrib,";",$.token_EndList)
+        seq("block",$.token_BlockIdent,optional($.AttribSet),$.token_BeginList,optional($.list_StmtWithAttrib),$.JumpWithAttrib,";",$.token_EndList),
+        seq("block",$.token_BlockIdent,optional($.AttribSet),$.token_BeginList,"(",optional($.list_PhiAssign),")",";",optional($.list_StmtWithAttrib),$.JumpWithAttrib,";",$.token_EndList)
       ),
     AttrKeyValue: $ =>
       seq($.token_BIdent,"=",$.Attr),
@@ -224,23 +233,23 @@ module.exports = grammar({
       choice(
         seq(),
         $.AttrKeyValue,
-        seq($.AttrKeyValue,";",$.list_AttrKeyValue)
+        seq($.AttrKeyValue,";",optional($.list_AttrKeyValue))
       ),
     AttribSet: $ =>
       choice(
-        seq($.token_BeginRec,$.list_AttrKeyValue,$.Semicolons,$.token_EndRec),
+        seq($.token_BeginRec,optional($.list_AttrKeyValue),optional($.Semicolons),$.token_EndRec),
         seq()
       ),
     list_Attr: $ =>
       choice(
         seq(),
         $.Attr,
-        seq($.Attr,";",$.list_Attr)
+        seq($.Attr,";",optional($.list_Attr))
       ),
     Attr: $ =>
       choice(
-        seq($.token_BeginRec,$.list_AttrKeyValue,$.Semicolons,$.token_EndRec),
-        seq($.token_BeginList,$.list_Attr,$.token_EndList),
+        seq($.token_BeginRec,optional($.list_AttrKeyValue),optional($.Semicolons),$.token_EndRec),
+        seq($.token_BeginList,optional($.list_Attr),$.token_EndList),
         $.Value,
         $.token_Str
       ),
@@ -250,7 +259,7 @@ module.exports = grammar({
       choice(
         seq(),
         $.Params,
-        seq($.Params,",",$.list_Params)
+        seq($.Params,",",optional($.list_Params))
       ),
     Value: $ =>
       choice(
@@ -267,14 +276,14 @@ module.exports = grammar({
         seq("forall",$.LambdaDef),
         seq("exists",$.LambdaDef),
         seq("old","(",$.Expr,")"),
-        seq($.token_GlobalIdent,"(",$.list_Expr,")"),
+        seq($.token_GlobalIdent,"(",optional($.list_Expr),")"),
         seq($.BinOp,"(",$.Expr,",",$.Expr,")"),
-        seq($.BoolBinOp,"(",$.list_Expr,")"),
+        seq($.BoolBinOp,"(",optional($.list_Expr),")"),
         seq($.UnOp,"(",$.Expr,")"),
         seq("zero_extend","(",$.IntVal,",",$.Expr,")"),
         seq("sign_extend","(",$.IntVal,",",$.Expr,")"),
         seq("extract","(",$.IntVal,",",$.IntVal,",",$.Expr,")"),
-        seq("bvconcat","(",$.list_Expr,")")
+        seq("bvconcat","(",optional($.list_Expr),")")
       ),
     LambdaDef: $ =>
       seq("(",$.list_LocalVar,")",$.token_LambdaSep,$.Expr),
@@ -381,12 +390,12 @@ module.exports = grammar({
     list_FunSpec: $ =>
       choice(
         seq(),
-        seq($.FunSpec,";",$.list_FunSpec)
+        seq($.FunSpec,";",optional($.list_FunSpec))
       ),
     list_ProgSpec: $ =>
       choice(
         seq(),
-        seq($.ProgSpec,";",$.list_ProgSpec)
+        seq($.ProgSpec,";",optional($.list_ProgSpec))
       ),
     token_BVTYPE: $ =>
       /bv\d+/,

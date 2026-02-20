@@ -19,6 +19,7 @@ import BNFC.CF
 import BNFC.Lexing (mkRegMultilineComment)
 import BNFC.PrettyPrint
 import Prelude hiding ((<>))
+import Control.Applicative ((<|>))
 
 import qualified Data.Either as Either
 import qualified Data.Maybe as Maybe
@@ -231,6 +232,34 @@ hasInternal = not . all isParsable
 -- will be created (prefixed with "_" in tree-sitter), and all internal rules will
 -- be sectioned as such.
 prOneCat :: KnownEmpty -> [Rule] -> NonTerminal -> Doc
+
+prOneCat knownEmpty rules (ListCat cat) | enable =
+  defineSymbol (formatCatName False (ListCat cat))
+    $+$ (indent . appendComma $
+      case (,) <$> singletonOrNilRule <*> consRule of
+        -- empty separator/terminator case
+        Just ([_], [x, _rec]) -> wrp "repeat1" (fmt [x])
+
+        -- possibly-empty separator list, non-empty separator
+        Just ([_], [x, sep, _rec]) -> wrapSeq [fmt [x], wrp "repeat" (fmt [sep, x])]
+
+        -- non-empty terminator list, non-empty terminator
+        Just ([_, _], [x, sep, _rec]) -> wrp "repeat1" (fmt [x, sep])
+        -- possibly-empty terminator list, non-empty terminator
+        Just ([], [x, sep, _rec]) -> wrp "repeat1" (fmt [x, sep])
+
+        _ -> error "treesitter: unexpected singletonRule/consRule combination")
+  where
+    enable = Maybe.isJust singletonOrNilRule && Maybe.isJust consRule
+
+    nilRule = rhsRule <$> List.find isNilFun rules
+    singletonRule = rhsRule <$> List.find isOneFun rules
+    consRule = rhsRule <$> List.find isConsFun rules
+    singletonOrNilRule = singletonRule <|> nilRule
+
+    fmt = formatSent . map (\x -> (NonOptional, x))
+    wrp s = wrapFun s False
+
 prOneCat knownEmpty rules nt =
   defineSymbol (formatCatName False nt)
     $+$ indentChoice parRhs
@@ -250,6 +279,7 @@ prOneCat knownEmpty rules nt =
     intRhs = genChoice internalRules
 
     genChoice = map (formatRhs . (fixSentence knownEmpty) . rhsRule)
+
 
 -- | Generate one tree-sitter rule for one defined token
 prOneToken :: (TokenCat, Reg) -> Doc

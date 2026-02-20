@@ -1,16 +1,19 @@
-X1. Start ::= "a" [NETerm];
-X2. Start ::= "b" [PETerm];
-X3. Start ::= "c" [PESep];
-X4. Start ::= "d" [NESep];
+X3. Start ::= "c" PESepOptionalTerm;
 
-A.NETerm ::= "a";
-terminator nonempty NETerm ";";
+S1.Scolon ::= ",";
+S2.Scolon ::= ;
 
-B.PETerm ::= "b";
-terminator PETerm "|";
+C3.PESep ::= "c";
+separator nonempty PESep ",";
 
-C.PESep ::= "c";
-separator PESep ",";
+C2.Term ::= "c";
+terminator Term ",";
 
-D.NESep ::= "d";
-separator nonempty NESep ":";
+C4.Term5 ::= "c";
+separator Term5 ",";
+
+C1.EmptySep ::= "c";
+terminator nonempty EmptySep "";
+
+
+rules PESepOptionalTerm ::= [PESep] Scolon | ;

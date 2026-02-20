@@ -7,25 +7,6 @@ module.exports = grammar({
     /\/\*[^*]*\*([^\*\/][^*]*\*|\*)*\//,
     /\/\/.*/,
   ],
-  word: $ =>
-    choice(
-      $.token_BVTYPE,
-      $.token_INTTYPE,
-      $.token_BOOLTYPE,
-      $.token_BIdent,
-      $.token_LocalIdent,
-      $.token_GlobalIdent,
-      $.token_BlockIdent,
-      $.token_ProcIdent,
-      $.token_BeginList,
-      $.token_EndList,
-      $.token_BeginRec,
-      $.token_EndRec,
-      $.token_LambdaSep,
-      $.token_Str,
-      $.token_IntegerHex,
-      $.token_IntegerDec
-    ),
   rules: {
     Module: $ =>
       $.list_Decl,
@@ -282,7 +263,6 @@ module.exports = grammar({
       choice(
         $.BVBinOp,
         $.BVLogicalBinOp,
-        $.BoolBinOp,
         $.IntLogicalBinOp,
         $.IntBinOp,
         $.EqOp

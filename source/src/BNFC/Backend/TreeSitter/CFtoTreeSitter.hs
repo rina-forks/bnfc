@@ -38,7 +38,8 @@ cfToTreeSitter name cf =
     $+$ indent
       ( text "name: '" <> text name <> text "',"
           $+$ extrasSection
-          $+$ wordSection
+          -- TODO: wordSection should point to the identifier name, and should be customisable?
+          -- $+$ wordSection
           $+$ rulesSection
       )
     $+$ text "});"
@@ -49,6 +50,7 @@ cfToTreeSitter name cf =
       text "rules: {"
         $+$ indent
           ( prRules cf
+              -- $+$ prWord cf
               $+$ prUsrTokenRules cf
               $+$ prBuiltinTokenRules cf
           )

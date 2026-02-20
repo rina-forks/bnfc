@@ -28,24 +28,21 @@ module.exports = grammar({
     ),
   rules: {
     Module: $ =>
-      choice(
-        optional($.list_Decl),
-        seq()
-      ),
+      optional($.list_Decl),
     list_Decl: $ =>
       choice(
-        seq(),
+        choice(),
         seq($.Decl,";",optional($.list_Decl))
       ),
     list_token_BlockIdent: $ =>
       choice(
-        seq(),
+        choice(),
         $.token_BlockIdent,
         seq($.token_BlockIdent,",",optional($.list_token_BlockIdent))
       ),
     Semicolons: $ =>
       choice(
-        seq(),
+        choice(),
         seq(optional($.Semicolons),";")
       ),
     Decl: $ =>
@@ -62,13 +59,13 @@ module.exports = grammar({
       ),
     list_Type: $ =>
       choice(
-        seq(),
+        choice(),
         $.Type,
         seq($.Type,",",optional($.list_Type))
       ),
     ProcDef: $ =>
       choice(
-        seq(),
+        choice(),
         seq($.token_BeginList,optional($.list_Block),$.token_EndList)
       ),
     IntType: $ =>
@@ -88,7 +85,7 @@ module.exports = grammar({
       ),
     list_Expr: $ =>
       choice(
-        seq(),
+        choice(),
         $.Expr,
         seq($.Expr,",",optional($.list_Expr))
       ),
@@ -144,13 +141,13 @@ module.exports = grammar({
       seq($.LVar,"=",$.token_LocalIdent),
     list_NamedCallReturn: $ =>
       choice(
-        seq(),
+        choice(),
         $.NamedCallReturn,
         seq($.NamedCallReturn,",",optional($.list_NamedCallReturn))
       ),
     LVars: $ =>
       choice(
-        seq(),
+        choice(),
         seq("var","(",$.list_LocalVar,")",":="),
         seq("(",$.list_LVar,")",":="),
         seq("(",optional($.list_NamedCallReturn),")",":=")
@@ -159,20 +156,14 @@ module.exports = grammar({
       seq($.token_LocalIdent,"=",$.Expr),
     list_NamedCallArg: $ =>
       choice(
-        seq(),
+        choice(),
         $.NamedCallArg,
         seq($.NamedCallArg,",",optional($.list_NamedCallArg))
       ),
     CallParams: $ =>
       choice(
-        choice(
-          optional($.list_Expr),
-          seq()
-        ),
-        choice(
-          optional($.list_NamedCallArg),
-          seq()
-        )
+        optional($.list_Expr),
+        optional($.list_NamedCallArg)
       ),
     Jump: $ =>
       choice(
@@ -193,7 +184,7 @@ module.exports = grammar({
       ),
     list_Block: $ =>
       choice(
-        seq(),
+        choice(),
         $.Block,
         seq($.Block,";",optional($.list_Block))
       ),
@@ -201,7 +192,7 @@ module.exports = grammar({
       seq($.Stmt,optional($.AttribSet)),
     list_StmtWithAttrib: $ =>
       choice(
-        seq(),
+        choice(),
         seq($.StmtWithAttrib,";",optional($.list_StmtWithAttrib))
       ),
     JumpWithAttrib: $ =>
@@ -210,7 +201,7 @@ module.exports = grammar({
       seq($.token_BlockIdent,"->",$.Var),
     list_PhiExpr: $ =>
       choice(
-        seq(),
+        choice(),
         $.PhiExpr,
         seq($.PhiExpr,",",optional($.list_PhiExpr))
       ),
@@ -218,7 +209,7 @@ module.exports = grammar({
       seq($.LVar,":=","phi","(",optional($.list_PhiExpr),")"),
     list_PhiAssign: $ =>
       choice(
-        seq(),
+        choice(),
         $.PhiAssign,
         seq($.PhiAssign,",",optional($.list_PhiAssign))
       ),
@@ -231,18 +222,18 @@ module.exports = grammar({
       seq($.token_BIdent,"=",$.Attr),
     list_AttrKeyValue: $ =>
       choice(
-        seq(),
+        choice(),
         $.AttrKeyValue,
         seq($.AttrKeyValue,";",optional($.list_AttrKeyValue))
       ),
     AttribSet: $ =>
       choice(
         seq($.token_BeginRec,optional($.list_AttrKeyValue),optional($.Semicolons),$.token_EndRec),
-        seq()
+        choice()
       ),
     list_Attr: $ =>
       choice(
-        seq(),
+        choice(),
         $.Attr,
         seq($.Attr,";",optional($.list_Attr))
       ),
@@ -257,7 +248,7 @@ module.exports = grammar({
       seq($.token_LocalIdent,":",$.Type),
     list_Params: $ =>
       choice(
-        seq(),
+        choice(),
         $.Params,
         seq($.Params,",",optional($.list_Params))
       ),
@@ -389,12 +380,12 @@ module.exports = grammar({
       ),
     list_FunSpec: $ =>
       choice(
-        seq(),
+        choice(),
         seq($.FunSpec,";",optional($.list_FunSpec))
       ),
     list_ProgSpec: $ =>
       choice(
-        seq(),
+        choice(),
         seq($.ProgSpec,";",optional($.list_ProgSpec))
       ),
     token_BVTYPE: $ =>

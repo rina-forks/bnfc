@@ -135,24 +135,23 @@ type OptionalSentForm = [(Optional, Either Cat String)]
 -- for the first one to indicate that it DOES match empty and indicate that
 -- there is nothing remaining if empty is removed.
 
-possiblyEmptyRule :: KnownEmpty -> SentForm -> [Either OptionalSentForm SentForm]
+possiblyEmptyRule :: KnownEmpty -> SentForm -> Either [OptionalSentForm] [SentForm]
 possiblyEmptyRule knownEmpty sentence =
-  Trace.traceShowId $
   if sentenceMatchesEmpty then
-    map (Left . makeTailOptional) (List.tails sentence)
+    Left (Maybe.mapMaybe removeEmptyMatch (List.tails sentence))
   else
-    [Right sentence]
+    Right [sentence]
   where
     sentenceMatchesEmpty = all (`Set.member` knownEmpty) sentence
 
-    makeTailOptional (x:xs) = ((NonOptional, x) : map (\x -> (Optional, x)) xs)
-    makeTailOptional [] = []
+    removeEmptyMatch (x:xs) = Just ((NonOptional, x) : map (\x -> (Optional, x)) xs)
+    removeEmptyMatch [] = Nothing
 
-sequenceOptionalSentForm :: [Either OptionalSentForm SentForm] -> Either [OptionalSentForm] [SentForm]
-sequenceOptionalSentForm eithers =
-  case sequence eithers of
-    Right sents -> Right sents
-    Left _ -> Left (map (either id sentToOptionalSent) eithers)
+appendSentForms :: Either [OptionalSentForm] [SentForm] -> Either [OptionalSentForm] [SentForm] -> Either [OptionalSentForm] [SentForm]
+appendSentForms (Right x) (Right y) = Right (x ++ y)
+appendSentForms x y = Left (toOptional x ++ toOptional y)
+  where
+    toOptional = either id (map sentToOptionalSent)
 
 sentToOptionalSent :: SentForm -> OptionalSentForm
 sentToOptionalSent = map (\x -> (NonOptional, x))
@@ -161,7 +160,8 @@ sentToOptionalSent = map (\x -> (NonOptional, x))
 --   string, given the set of currently-known empty things.
 possiblyEmptyCat :: KnownEmpty -> (Cat, [Rule]) -> Either [OptionalSentForm] [SentForm]
 possiblyEmptyCat knownEmpty (cat, rules) =
-  sequenceOptionalSentForm $ concatMap (possiblyEmptyRule knownEmpty . rhsRule) rules
+  foldr appendSentForms (Right []) $
+    map (possiblyEmptyRule knownEmpty . rhsRule) rules
 
 possiblyEmptyCats :: [(Cat, [Rule])] -> KnownEmpty -> KnownEmpty
 possiblyEmptyCats cats knownEmpty =
@@ -173,7 +173,7 @@ possiblyEmptyCats cats knownEmpty =
 fixPointKnownEmpty :: [(Cat, [Rule])] -> KnownEmpty
 fixPointKnownEmpty cats =
   case fixPoint of
-    Just knownEmpty -> knownEmpty
+    Just knownEmpty -> Trace.traceShowId knownEmpty
     Nothing -> error "impossible due to fix point iteration"
   where
     knownEmptySeq = iterate (possiblyEmptyCats cats) Set.empty
@@ -188,7 +188,8 @@ applyOptionals knownEmpty = map apply
 
 fixSentence :: KnownEmpty -> SentForm -> [OptionalSentForm]
 fixSentence knownEmpty =
-  map (applyOptionals knownEmpty . either id sentToOptionalSent)
+  map (applyOptionals knownEmpty)
+    . either id (map sentToOptionalSent)
     . possiblyEmptyRule knownEmpty
 
 -- | First print the entrypoint rule, tree-sitter always use the
@@ -282,6 +283,7 @@ wrapChoice = wrapOptListFun "choice" True
 -- Returns the only item without wrapping otherwise
 wrapOptListFun :: String -> Bool -> [Doc] -> Doc
 wrapOptListFun _ _ [x] = x
+wrapOptListFun fun _ [] = wrapFun fun False empty
 wrapOptListFun fun newline list = wrapFun fun newline (commaJoin newline list)
 
 wrapFun :: String -> Bool -> Doc -> Doc
@@ -300,6 +302,8 @@ formatRhs = wrapChoice . map formatSent
 formatSent :: OptionalSentForm -> Doc
 formatSent = wrapSeq . map (\(isOpt, x) -> isOptional isOpt (fmt x))
   where
+    -- justIf p x = if p x then Just x else Nothing
+
     isOptional Optional = wrapFun "optional" False
     isOptional NonOptional = id
 

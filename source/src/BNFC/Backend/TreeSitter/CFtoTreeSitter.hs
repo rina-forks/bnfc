@@ -19,6 +19,7 @@ import BNFC.CF
 import BNFC.Lexing (mkRegMultilineComment)
 import BNFC.PrettyPrint
 import Prelude hiding ((<>))
+import qualified Data.List as List
 
 -- | Indent one level of 2 spaces
 indent :: Doc -> Doc
@@ -128,22 +129,18 @@ prRules cf =
   if onlyOneEntry
     then
       prOneCat entryRules entryCat
-        $+$ prOtherRules entryCat cf
+        $+$ vcat' (map (uncurry prOneCat) otherRules)
     else error "Tree-sitter only supports one entrypoint"
   where
     --If entrypoint is defined, there must be only one entrypoint
     --If it is not defined, defaults to use the first rule as entrypoint
     onlyOneEntry = not (hasEntryPoint cf) || onlyOneEntryDefined
     onlyOneEntryDefined = length (allEntryPoints cf) == 1
+
     entryCat = firstEntry cf
     entryRules = rulesForCat' cf entryCat
 
--- | Print all other rules except the entrypoint
-prOtherRules :: Cat -> CF -> Doc
-prOtherRules entryCat cf = vcat' $ map mkOne rules
-  where
-    rules = [(c, r) | (c, r) <- ruleGroupsInternals cf, c /= entryCat]
-    mkOne (cat, rules) = prOneCat rules cat
+    otherRules = [(rs, c) | (c, rs) <- ruleGroupsInternals cf, c /= entryCat]
 
 prUsrTokenRules :: CF -> Doc
 prUsrTokenRules cf = vcat' $ map prOneToken tokens
@@ -163,16 +160,18 @@ prOneCat :: [Rule] -> NonTerminal -> Doc
 prOneCat rules nt =
   defineSymbol (formatCatName False nt)
     $+$ indent (appendComma parRhs)
-    $+$ internalRules
-  where
-    int = hasInternal rules
-    internalRules =
-      if int
+    $+$
+      (if hasInternal
         then defineSymbol (formatCatName True nt) $+$ indent (appendComma intRhs)
-        else empty
-    parRhs = wrapChoice $ transChoice ++ genChoice (filter isParsable rules)
-    transChoice = [text $ refName $ formatCatName True nt | int]
-    intRhs = wrapChoice $ genChoice (filter (not . isParsable) rules)
+        else empty)
+  where
+    (parsableRules, internalRules) = List.partition isParsable rules
+    hasInternal = not $ null internalRules
+
+    parRhs = wrapChoice $ transChoice ++ genChoice parsableRules
+
+    transChoice = [text $ refName $ formatCatName True nt | hasInternal]
+    intRhs = wrapChoice $ genChoice internalRules
     genChoice = map (wrapSeq . formatRhs . rhsRule)
 
 -- | Generate one tree-sitter rule for one defined token
@@ -206,10 +205,8 @@ wrapChoice = wrapOptListFun "choice" True
 -- | Wrap list using tree-sitter fun if the list contains multiple items
 -- Returns the only item without wrapping otherwise
 wrapOptListFun :: String -> Bool -> [Doc] -> Doc
-wrapOptListFun fun newline list =
-  if length list == 1
-    then head list
-    else wrapFun fun newline (commaJoin newline list)
+wrapOptListFun _ _ [x] = x
+wrapOptListFun fun newline list = wrapFun fun newline (commaJoin newline list)
 
 wrapFun :: String -> Bool -> Doc -> Doc
 wrapFun fun newline arg = joinOp [text fun <> text "(", indent arg, text ")"]

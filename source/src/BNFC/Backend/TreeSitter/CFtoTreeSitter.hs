@@ -201,6 +201,7 @@ prRules cf =
   -- Trace.traceShow (possiblyEmptyCats (ruleGroupsInternals cf) Set.empty) $
   if onlyOneEntry
     then
+      -- TODO: the entry token is allowed to be empty. if it can be empty, just choice it with empty or something.
       prOneCat knownEmpty (Trace.traceShow (map (render .pretty) entryRules) entryRules) entryCat
         $+$ vcat' (map (uncurry (prOneCat knownEmpty)) otherRules)
     else error "Tree-sitter only supports one entrypoint"

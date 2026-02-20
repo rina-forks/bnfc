@@ -19,7 +19,10 @@ import BNFC.CF
 import BNFC.Lexing (mkRegMultilineComment)
 import BNFC.PrettyPrint
 import Prelude hiding ((<>))
+
 import qualified Data.List as List
+import qualified Data.Set as Set
+import qualified Debug.Trace as Trace
 
 -- | Indent one level of 2 spaces
 indent :: Doc -> Doc
@@ -121,6 +124,17 @@ stringRule =
 identRule =
   defineSymbol "token_Ident" <+> text "/[a-zA-Z][a-zA-Z\\d_']*/" <> ","
 
+-- | Possibly empty non-terminals (Cat) or terminals (String, as token name).
+type KnownEmpty = Set.Set (Either Cat String)
+
+-- | Returns whether the given Cat with the given Rules could match the empty
+--   string, given the set of currently-known empty things.
+possiblyEmptyCat :: (Cat, [Rule]) -> KnownEmpty -> Bool
+possiblyEmptyCat (cat, rules) knownEmpty = any (\x -> possiblyEmptyRule x knownEmpty) rules
+
+possiblyEmptyRule :: Rule -> KnownEmpty -> Bool
+possiblyEmptyRule rul knownEmpty = Trace.trace (render $ pretty rul) False
+
 -- | First print the entrypoint rule, tree-sitter always use the
 --   first rule as entrypoint and does not support multi-entrypoint.
 --   Then print rest of the rules
@@ -158,12 +172,13 @@ hasInternal = not . all isParsable
 -- be sectioned as such.
 prOneCat :: [Rule] -> NonTerminal -> Doc
 prOneCat rules nt =
-  defineSymbol (formatCatName False nt)
+  possiblyEmptyCat (nt, rules) Set.empty `seq`
+  (defineSymbol (formatCatName False nt)
     $+$ indent (appendComma parRhs)
     $+$
       (if hasInternal
         then defineSymbol (formatCatName True nt) $+$ indent (appendComma intRhs)
-        else empty)
+        else empty))
   where
     (parsableRules, internalRules) = List.partition isParsable rules
     hasInternal = not $ null internalRules

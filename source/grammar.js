@@ -28,7 +28,7 @@ module.exports = grammar({
     ),
   rules: {
     Module: $ =>
-      optional($.list_Decl),
+      $.list_Decl,
     list_Decl: $ =>
       choice(
         choice(),
@@ -162,8 +162,8 @@ module.exports = grammar({
       ),
     CallParams: $ =>
       choice(
-        optional($.list_Expr),
-        optional($.list_NamedCallArg)
+        $.list_Expr,
+        $.list_NamedCallArg
       ),
     Jump: $ =>
       choice(

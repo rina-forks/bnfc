@@ -180,16 +180,14 @@ fixPointKnownEmpty cats =
 
     fixPoint = fst <$> List.find (uncurry (==)) (knownEmptySeq `zip` drop 1 knownEmptySeq)
 
-applyOptionals :: KnownEmpty -> OptionalSentForm -> OptionalSentForm
+applyOptionals :: KnownEmpty -> SentForm -> OptionalSentForm
 applyOptionals knownEmpty = map apply
   where
-    apply (Optional, x) = (Optional, x)
-    apply (NonOptional, x) = (if x `Set.member` knownEmpty then Optional else NonOptional, x)
+    apply x = (if x `Set.member` knownEmpty then Optional else NonOptional, x)
 
 fixSentence :: KnownEmpty -> SentForm -> [OptionalSentForm]
 fixSentence knownEmpty =
-  map (applyOptionals knownEmpty)
-    . either id (map sentToOptionalSent)
+    either id (map (applyOptionals knownEmpty))
     . possiblyEmptyRule knownEmpty
 
 -- | First print the entrypoint rule, tree-sitter always use the

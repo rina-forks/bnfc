@@ -24,6 +24,8 @@ import BNFC.PrettyPrint
 import Prelude hiding ((<>))
 
 import qualified Data.List as List
+import qualified Data.Maybe as Maybe
+import qualified Data.Either as Either
 import qualified Data.List.NonEmpty as List1
 
 -- | Indent one level of 2 spaces
@@ -43,16 +45,20 @@ cfToTreeSitter name wordCat cf =
       )
     $+$ text "});"
   where
-    (commentTokens, otherTokens) =
-      List.partition ((== LexComment) . snd) (mkLexer cf)
+    (commentTokens, lexTokens) =
+      Either.partitionEithers $ Maybe.mapMaybe tokenFilter $ mkLexer cf
 
-    extrasSection = prExtras (map fst commentTokens)
+    tokenFilter (r, LexComment) = Just (Left r)
+    tokenFilter (r, LexToken name) = Just (Right (r, name))
+    tokenFilter (_, LexSymbols) = Nothing
+
+    extrasSection = prExtras commentTokens
     wordSection = prWord wordCat cf
     rulesSection =
       text "rules: {"
         $+$ indent
           ( prRules cf
-              $+$ prTokenRules cf otherTokens
+              $+$ prTokenRules cf lexTokens
           )
         $+$ text "},"
 
@@ -121,10 +127,9 @@ prRules cf =
 
     knownEmpty = fixPointKnownEmpty allGroups
 
-prTokenRules :: CF -> [(Reg, LexType)] -> Doc
-prTokenRules cf tokens = vcat' (map prOneToken usedTokens)
+prTokenRules :: CF -> [(Reg, TokenCat)] -> Doc
+prTokenRules cf lexTokens = vcat' (map prOneToken usedTokens)
   where
-    lexTokens = [(r,nm) | (r,ty) <- tokens, LexToken nm <- [ty]]
     usedTokens = filter (isUsedCat cf . TokenCat . snd) lexTokens
 
 -- | Generate one tree-sitter rule for one defined token

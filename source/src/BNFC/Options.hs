@@ -40,7 +40,7 @@ import System.FilePath (takeBaseName)
 import Text.Printf     (printf)
 
 import Paths_BNFC      (version)
-import BNFC.CF         (CF)
+import BNFC.CF         (CF, catIdent)
 import BNFC.Utils      (unless)
 
 -- ~~~ Option data structures ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -184,7 +184,7 @@ defaultOptions = Options
   , visualStudio    = False
   , wcf             = False
   --- Tree-sitter specific
-  , treeSitterWord  = "Ident"
+  , treeSitterWord  = catIdent
   }
 
 -- | Check whether an option is unchanged from the default.

@@ -23,7 +23,7 @@ debugPrint = putStrLn . concat . words . printTree
 
 -- Abstract lexer
 
-data LexType = LexComment | LexToken String | LexSymbols
+data LexType = LexComment | LexToken String | LexSymbols deriving (Eq, Show)
 
 mkLexer :: CF -> [(Reg, LexType)]
 mkLexer cf = concat

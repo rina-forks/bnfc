@@ -17,7 +17,8 @@ import BNFC.Abs (Reg)
 import BNFC.Backend.TreeSitter.RegToJSReg
 import BNFC.Backend.TreeSitter.MatchesEmpty(fixPointKnownEmpty, transformEmptyMatches, KnownEmpty, OptSym(..), OptSentForm, isKnownEmpty)
 import BNFC.CF
-import BNFC.Lexing (mkRegMultilineComment, mkRegSingleLineComment)
+import BNFC.Utils(when, applyWhen)
+import BNFC.Lexing (mkLexer, LexType(..))
 import BNFC.PrettyPrint
 
 import Prelude hiding ((<>))
@@ -42,38 +43,31 @@ cfToTreeSitter name wordCat cf =
       )
     $+$ text "});"
   where
-    extrasSection = prExtras cf
+    (commentTokens, otherTokens) =
+      List.partition ((== LexComment) . snd) (mkLexer cf)
+
+    extrasSection = prExtras (map fst commentTokens)
     wordSection = prWord wordCat cf
     rulesSection =
       text "rules: {"
         $+$ indent
           ( prRules cf
-              $+$ prUsrTokenRules cf
-              $+$ prBuiltinTokenRules cf
+              $+$ prTokenRules cf otherTokens
           )
         $+$ text "},"
 
 -- | Print rules for comments
-prExtras :: CF -> Doc
-prExtras cf =
-  if extraNeeded
-    then
-      defineSymbol "extras" <> "["
-        $+$ indent
-          ( -- default rule for white spaces
-            text "/\\s/,"
-              $+$ mRules
-              $+$ sRules
-          )
-        $+$ text "],"
-    else empty
+prExtras :: [Reg] -> Doc
+prExtras commentRegs =
+  defineSymbol "extras" <> "["
+    $+$ indent
+      ( -- default rule for white spaces
+        text "/\\s/,"
+          $+$ vcat' commentDocs
+      )
+    $+$ text "],"
   where
-    extraNeeded = length commentMRules + length commentSRules > 0
-    (commentMRules, commentSRules) = comments cf
-    mRules = vcat' $ map mkOneMRule commentMRules
-    sRules = vcat' $ map mkOneSRule commentSRules
-    mkOneSRule s = text (printRegJSReg $ mkRegSingleLineComment s) <> ","
-    mkOneMRule (s, e) = text (printRegJSReg $ mkRegMultilineComment s e) <> ","
+    commentDocs = map (appendComma . text . printRegJSReg) commentRegs
 
 -- | Print word section, this section is needed for tree-sitter
 --   to do keyword extraction before any parsing/lexing, see
@@ -88,34 +82,12 @@ prWord wordCat cf =
   if not wordCatValid then
     error "specified tree-sitter word token not found in BNFC grammar"
   else
-    if isUsedCat cf wordCat then
+    when (isUsedCat cf wordCat) $
       defineSymbol "word"
         <+> formatSent [NonOptional (Left wordCat)] <> ","
-    else empty
   where
+    -- TODO: word token needs to become a token type instead of strToCat.
     wordCatValid = wordCat == TokenCat catIdent || wordCat `elem` allParserCats cf
-
--- | Print builtin token rules according to their usage
-prBuiltinTokenRules :: CF -> Doc
-prBuiltinTokenRules cf =
-  ifC catInteger integerRule
-    $+$ ifC catDouble doubleRule
-    $+$ ifC catChar charRule
-    $+$ ifC catString stringRule
-    $+$ ifC catIdent identRule
-  where
-    ifC cat d = if isUsedCat cf (TokenCat cat) then d else empty
-
--- | Predefined builtin token rules
-integerRule, doubleRule, charRule, stringRule, identRule :: Doc
-integerRule = defineSymbol "token_Integer" <+> text "/\\d+/" <> ","
-doubleRule = defineSymbol "token_Double" <+> text "/\\d+\\.\\d+(e-?\\d+)?/" <> ","
-charRule =
-  defineSymbol "token_Char" <+> text "/'([^'\\\\]|(\\\\[\"'\\\\tnrf]))'/" <> ","
-stringRule =
-  defineSymbol "token_String" <+> text "/\"([^'\\\\]|(\\\\[\"'\\\\tnrf]))*\"/" <> ","
-identRule =
-  defineSymbol "token_Ident" <+> text "/[a-zA-Z][a-zA-Z\\d_']*/" <> ","
 
 -- | Prints the rules in the grammar with the entry point first.
 --
@@ -129,10 +101,8 @@ prRules cf =
     $+$ vcat' (map (uncurry (prOneCat knownEmpty id)) allGroups)
   where
     wrapEntry =
-      if any ((`isKnownEmpty` knownEmpty) . Left) virtEntryRhsCats then
+      applyWhen (any ((`isKnownEmpty` knownEmpty) . Left) virtEntryRhsCats) $
         wrapOptional'
-      else
-        id
 
     allGroups = ruleGroupsInternals cf
 
@@ -151,10 +121,17 @@ prRules cf =
 
     knownEmpty = fixPointKnownEmpty allGroups
 
-prUsrTokenRules :: CF -> Doc
-prUsrTokenRules cf = vcat' $ map prOneToken tokens
+prTokenRules :: CF -> [(Reg, LexType)] -> Doc
+prTokenRules cf tokens = vcat' (map prOneToken usedTokens)
   where
-    tokens = tokenPragmas cf
+    lexTokens = [(r,nm) | (r,ty) <- tokens, LexToken nm <- [ty]]
+    usedTokens = filter (isUsedCat cf . TokenCat . snd) lexTokens
+
+-- | Generate one tree-sitter rule for one defined token
+prOneToken :: (Reg, TokenCat) -> Doc
+prOneToken (reg, name) =
+  defineSymbol (formatCatName False $ TokenCat name)
+    $+$ indent (text $ printRegJSReg reg) <> ","
 
 -- | Check if a set of rules contains internal rules
 hasInternal :: [Rule] -> Bool
@@ -168,16 +145,13 @@ hasInternal = not . all isParsable
 prOneCat :: KnownEmpty -> (Doc -> Doc) -> NonTerminal -> [Rule] -> Doc
 prOneCat knownEmpty wrapRhs nt rules =
   defineSymbol (formatCatName False nt)
-    $+$ indentCommaChoice (wrapRhs parRhs)
+    $+$ indent (appendComma (wrapRhs parRhs))
     $+$
-      (if hasInternal
-        then defineSymbol (formatCatName True nt) $+$ indentCommaChoice intRhs
-        else empty)
+      when hasInternal
+        (defineSymbol (formatCatName True nt) $+$ indent (appendComma intRhs))
   where
     (parsableRules, internalRules) = List.partition isParsable rules
     hasInternal = not (null internalRules)
-
-    indentCommaChoice = indent . appendComma
 
     internalTokenName = [text $ refName $ formatCatName True nt | hasInternal]
     parRhs = wrapChoice (internalTokenName ++ genRules parsableRules)
@@ -189,12 +163,6 @@ prOneCat knownEmpty wrapRhs nt rules =
     genRules = map genRule
 
     renderOneLine = renderStyle (style { mode = OneLineMode })
-
--- | Generate one tree-sitter rule for one defined token
-prOneToken :: (TokenCat, Reg) -> Doc
-prOneToken (cat, exp) =
-  defineSymbol (formatCatName False $ TokenCat cat)
-    $+$ indent (text $ printRegJSReg exp) <> ","
 
 -- | Start a defined symbol block in tree-sitter grammar
 defineSymbol :: String -> Doc

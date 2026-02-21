@@ -1,6 +1,9 @@
 
 module.exports = grammar({
   name: 'list_trailing',
+  extras: $ =>[
+    /\s/,
+  ],
   rules: {
     BNFCStart: $ =>
       // BNFCStart_Start. BNFCStart ::= Start

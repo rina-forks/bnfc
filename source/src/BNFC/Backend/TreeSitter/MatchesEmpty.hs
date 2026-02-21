@@ -7,6 +7,9 @@
     Created       : 23 Nov, 2023
 
 -}
+
+{-# LANGUAGE LambdaCase #-}
+
 {-|
 Description: Identifies and transforms rules which match the empty string,
              as required by Treesitter.
@@ -61,6 +64,7 @@ section.
 -}
 module BNFC.Backend.TreeSitter.MatchesEmpty where
 
+import BNFC.Utils((>.>))
 import BNFC.CF(SentForm, Cat, Rule, rhsRule)
 
 import qualified Data.Maybe as Maybe
@@ -172,19 +176,24 @@ possiblyEmptySym knownEmpty sym =
 -- choice, the returned list is equivalent to the original rule, /except/ that
 -- the returned list has empty matches removed. If the rule previously matched
 -- empty, this is encoded as the v'MatchesEmpty' variant.
+--
+-- __Implementation Detail__: blah
 possiblyEmptyRule :: KnownEmpty -> SentForm -> MatchesEmpty [OptSentForm]
-possiblyEmptyRule knownEmpty sent =
-  case seqListMatchesEmpty sent' of
-    MatchesEmpty syms -> MatchesEmpty $ Maybe.mapMaybe headNonOptional (List.tails syms)
-    NonEmpty syms -> NonEmpty [syms]
+possiblyEmptyRule knownEmpty =
+  map (possiblyEmptySym knownEmpty)
+  >.> map fromOpt
+  >.> seqListMatchesEmpty
+  >.> \case
+    MatchesEmpty sent -> MatchesEmpty (subtractEmptyString sent)
+    NonEmpty sent -> NonEmpty [sent]
   where
-    sent' = map (fromOpt . possiblyEmptySym knownEmpty) sent
-
     fromOpt (Optional x) = MatchesEmpty [Optional x]
     fromOpt (NonOptional x) = NonEmpty [NonOptional x]
 
+    subtractEmptyString = Maybe.mapMaybe headNonOptional . List.tails
+
     headNonOptional (Optional x : xs) = Just (NonOptional x : xs)
-    headNonOptional (NonOptional _ : _) = error "headNonOptional: unexpected head is already NonOptional"
+    headNonOptional (NonOptional _ : _) = error "headNonOptional: unexpected that head is already NonOptional"
     headNonOptional [] = Nothing
 
 -- | Determines whether the given non-terminal category with the given

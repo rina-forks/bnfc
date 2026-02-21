@@ -1,6 +1,9 @@
 
 module.exports = grammar({
   name: 'seq',
+  extras: $ =>[
+    /\s/,
+  ],
   rules: {
     BNFCStart: $ =>
       optional(

@@ -1,4 +1,7 @@
 -- start symbol should be allowed to be optional
 rules Start ::= Ident Start | ;
 
+comment "//";
+comment "/*" "*/";
+
 

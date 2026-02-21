@@ -21,10 +21,8 @@ import BNFC.Lexing (mkRegMultilineComment, mkRegSingleLineComment)
 import BNFC.PrettyPrint
 
 import Prelude hiding ((<>))
-import Control.Applicative ((<|>))
 
 import qualified Data.List as List
-import qualified Data.Maybe as Maybe
 import qualified Data.List.NonEmpty as List1
 
 -- | Indent one level of 2 spaces
@@ -144,7 +142,7 @@ prRules cf =
 
     toVirtRule rhsCat =
       npRule
-        (identCat virtEntryCat ++ identCat rhsCat)
+        (identCat virtEntryCat ++ "_" ++ identCat rhsCat)
         virtEntryCat
         [Left rhsCat]
         Parsable
@@ -180,11 +178,15 @@ prOneCat knownEmpty wrapRhs nt rules =
     indentCommaChoice = indent . appendComma
 
     internalTokenName = [text $ refName $ formatCatName True nt | hasInternal]
-    parRhs = wrapChoice (internalTokenName ++ genChoice parsableRules)
-    intRhs = wrapChoice (genChoice internalRules)
+    parRhs = wrapChoice (internalTokenName ++ genRules parsableRules)
+    intRhs = wrapChoice (genRules internalRules)
 
-    genChoice = map (formatRhs . transformEmptyMatches knownEmpty . rhsRule)
+    genRule rule =
+      ("//" <+> text (renderOneLine (pretty rule)))
+      $+$ (formatRhs . transformEmptyMatches knownEmpty) (rhsRule rule)
+    genRules = map genRule
 
+    renderOneLine = renderStyle (style { mode = OneLineMode })
 
 -- | Generate one tree-sitter rule for one defined token
 prOneToken :: (TokenCat, Reg) -> Doc

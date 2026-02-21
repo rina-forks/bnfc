@@ -9,5 +9,5 @@ all:
 	rm -rf grammar.js grammar.js.bak
 
 test-generate: *.expected.js
-	bash -xec 'd=`pwd`; cd `mktemp -d`; for f in "$$@"; do tree-sitter generate $$d/$$f; done' x $^
+	bash -xec 'd=`pwd`; cd `mktemp -d`; for f in "$$@"; do cp $$d/tree-sitter.json .; tree-sitter generate $$d/$$f; echo; done' x $^
 

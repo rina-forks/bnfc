@@ -166,35 +166,6 @@ hasInternal = not . all isParsable
 -- will be created (prefixed with "_" in tree-sitter), and all internal rules will
 -- be sectioned as such.
 prOneCat :: KnownEmpty -> (Doc -> Doc) -> NonTerminal -> [Rule] -> Doc
-
-prOneCat _ wrapRhs nt@(ListCat _) rules | enable =
-  defineSymbol (formatCatName False nt)
-    $+$ (indent . appendComma . wrapRhs $
-      case (,) <$> singletonOrNilRule <*> consRule of
-        -- empty separator/terminator case.
-        Just ([_], [x, _rec]) -> wrp "repeat1" (fmt [x])
-        Just ([], [x, _rec]) -> wrp "repeat1" (fmt [x]) -- empty match eliminated
-
-        -- possibly-empty separator list, non-empty separator
-        Just ([_], [x, sep, _rec]) -> wrapSeq [fmt [x], wrp "repeat" (fmt [sep, x])]
-
-        -- non-empty terminator list, non-empty terminator
-        Just ([_, _], [x, sep, _rec]) -> wrp "repeat1" (fmt [x, sep])
-        -- possibly-empty terminator list, non-empty terminator
-        Just ([], [x, sep, _rec]) -> wrp "repeat1" (fmt [x, sep])
-
-        _ -> error "treesitter: unexpected singletonRule/consRule combination")
-  where
-    enable = Maybe.isJust singletonOrNilRule && Maybe.isJust consRule
-
-    nilRule = rhsRule <$> List.find isNilFun rules
-    singletonRule = rhsRule <$> List.find isOneFun rules
-    consRule = rhsRule <$> List.find isConsFun rules
-    singletonOrNilRule = singletonRule <|> nilRule
-
-    fmt = formatSent . map NonOptional
-    wrp s = wrapFun s False
-
 prOneCat knownEmpty wrapRhs nt rules =
   defineSymbol (formatCatName False nt)
     $+$ indentCommaChoice (wrapRhs parRhs)

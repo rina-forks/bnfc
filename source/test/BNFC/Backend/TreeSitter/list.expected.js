@@ -18,34 +18,59 @@ module.exports = grammar({
     NonEmptySeparator: $ =>
       "a",
     list_NonEmptySeparator: $ =>
-      seq($.NonEmptySeparator, repeat(seq(",", $.NonEmptySeparator))),
+      choice(
+        $.NonEmptySeparator,
+        seq($.NonEmptySeparator, ",", $.list_NonEmptySeparator)
+      ),
     MaybeEmptySeparator: $ =>
       "a",
     list_MaybeEmptySeparator: $ =>
-      seq($.MaybeEmptySeparator, repeat(seq(",", $.MaybeEmptySeparator))),
+      choice(
+        choice(),
+        $.MaybeEmptySeparator,
+        seq($.MaybeEmptySeparator, ",", optional($.list_MaybeEmptySeparator))
+      ),
     NonEmptyTerminator: $ =>
       "a",
     list_NonEmptyTerminator: $ =>
-      repeat1(seq($.NonEmptyTerminator, ",")),
+      choice(
+        seq($.NonEmptyTerminator, ","),
+        seq($.NonEmptyTerminator, ",", $.list_NonEmptyTerminator)
+      ),
     MaybeEmptyTerminator: $ =>
       "a",
     list_MaybeEmptyTerminator: $ =>
-      repeat1(seq($.MaybeEmptyTerminator, ",")),
+      choice(
+        choice(),
+        seq($.MaybeEmptyTerminator, ",", optional($.list_MaybeEmptyTerminator))
+      ),
     MaybeEmptySeparatorEmptySep: $ =>
       "a",
     list_MaybeEmptySeparatorEmptySep: $ =>
-      repeat1($.MaybeEmptySeparatorEmptySep),
+      choice(
+        choice(),
+        seq($.MaybeEmptySeparatorEmptySep, optional($.list_MaybeEmptySeparatorEmptySep))
+      ),
     MaybeEmptyTerminatorEmptySep: $ =>
       "a",
     list_MaybeEmptyTerminatorEmptySep: $ =>
-      repeat1($.MaybeEmptyTerminatorEmptySep),
+      choice(
+        choice(),
+        seq($.MaybeEmptyTerminatorEmptySep, optional($.list_MaybeEmptyTerminatorEmptySep))
+      ),
     NonEmptySeparatorEmptySep: $ =>
       "a",
     list_NonEmptySeparatorEmptySep: $ =>
-      repeat1($.NonEmptySeparatorEmptySep),
+      choice(
+        $.NonEmptySeparatorEmptySep,
+        seq($.NonEmptySeparatorEmptySep, $.list_NonEmptySeparatorEmptySep)
+      ),
     NonEmptyTerminatorEmptySep: $ =>
       "a",
     list_NonEmptyTerminatorEmptySep: $ =>
-      repeat1($.NonEmptyTerminatorEmptySep),
+      choice(
+        $.NonEmptyTerminatorEmptySep,
+        seq($.NonEmptyTerminatorEmptySep, $.list_NonEmptyTerminatorEmptySep)
+      ),
   },
 });

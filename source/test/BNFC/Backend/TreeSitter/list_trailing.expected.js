@@ -14,6 +14,10 @@ module.exports = grammar({
     A: $ =>
       $.Opt,
     list_A: $ =>
-      seq($.A, repeat(seq(",", $.A))),
+      choice(
+        choice(),
+        $.A,
+        seq(optional($.A), ",", optional($.list_A))
+      ),
   },
 });

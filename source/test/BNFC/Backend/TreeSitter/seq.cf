@@ -1,4 +1,6 @@
 rules Start ::= TransitivelyOptional | NonOptional;
+entrypoints Start;
+
 rules TransitivelyOptional ::= A B C;
 
 rules A ::= "a" | ;

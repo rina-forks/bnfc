@@ -130,29 +130,35 @@ stringRule =
 identRule =
   defineSymbol "token_Ident" <+> text "/[a-zA-Z][a-zA-Z\\d_']*/" <> ","
 
--- | First print the entrypoint rule, tree-sitter always use the
---   first rule as entrypoint and does not support multi-entrypoint.
---   Then print rest of the rules
+-- | Prints the rules in the grammar with the entry point first.
+--
+-- Since Treesitter requires a unique entry point, this will build a "virtual"
+-- entry point which dispatches to each of the declared BNFC entry points via
+-- a choice list. Additionally, the virtual entry point can be marked optional
+-- (and is the only rule which can be).
 prRules :: CF -> Doc
 prRules cf =
-    -- TODO: the entry token is allowed to be empty. if it can be empty, just choice it with empty or something.
-    prOneCat knownEmpty wrapEntry virtualEntryCat virtualEntryRhsRules
-      $+$ vcat' (map (uncurry (prOneCat knownEmpty id)) allGroups)
+  prOneCat knownEmpty wrapEntry virtEntryCat virtEntryRhsRules
+    $+$ vcat' (map (uncurry (prOneCat knownEmpty id)) allGroups)
   where
-    allGroups = ruleGroupsInternals cf
-
-    virtualEntryCat = Cat "BNFCStart"
-    virtualEntryRhsCats = List1.toList (allEntryPoints cf)
-    virtualEntryRhsRules = toRule virtualEntryCat <$> virtualEntryRhsCats
-
-    toRule cat rhsCat =
-      npRule ("BNFCStart_" ++ identCat rhsCat) cat [Left rhsCat] Parsable
-
     wrapEntry =
-      if any ((`isKnownEmpty` knownEmpty) . Left) virtualEntryRhsCats then
-        wrapOptional
+      if any ((`isKnownEmpty` knownEmpty) . Left) virtEntryRhsCats then
+        wrapOptional'
       else
         id
+
+    allGroups = ruleGroupsInternals cf
+
+    virtEntryCat = Cat "BNFCStart"
+    virtEntryRhsCats = List1.toList (allEntryPoints cf)
+    virtEntryRhsRules = toVirtRule <$> virtEntryRhsCats
+
+    toVirtRule rhsCat =
+      npRule
+        (identCat virtEntryCat ++ identCat rhsCat)
+        virtEntryCat
+        [Left rhsCat]
+        Parsable
 
     knownEmpty = fixPointKnownEmpty allGroups
 
@@ -250,6 +256,9 @@ wrapChoice = wrapOptListFun "choice" True
 
 wrapOptional :: Doc -> Doc
 wrapOptional = wrapFun "optional" False
+
+wrapOptional' :: Doc -> Doc
+wrapOptional' = wrapFun "optional" True
 
 -- | Wrap list using tree-sitter fun if the list contains multiple items
 -- Returns the only item without wrapping otherwise

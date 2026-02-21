@@ -1,5 +1,4 @@
 -- start symbol should be allowed to be optional
--- TODO: fix me
 rules Start ::= "a" Start | ;
 
 

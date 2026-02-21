@@ -1,15 +1,53 @@
-{-# LANGUAGE DeriveFunctor #-}
-
 {-
     BNF Converter: TreeSitter Grammar Generator
     Copyright (C) 2004  Author:  Markus Forsberg, Michael Pellauer,
                                  Bjorn Bringert
 
-    Description   : This module identifies and transforms rules which match
-                    the empty string, as required by Treesitter.
-
     Author        : Kangjing Huang (huangkangjing@gmail.com)
     Created       : 23 Nov, 2023
+
+-}
+{-|
+Description: Identifies and transforms rules which match the empty string,
+             as required by Treesitter.
+Maintainer: Kait Lam
+
+This module identifies and transforms rules which match the empty string,
+as required by constraints of Treesitter.
+
+Treesitter requires that rules do /not/ match the empty string.
+Although this is not made explicit in [their documentation](https://tree-sitter.github.io/tree-sitter/creating-parsers/3-writing-the-grammar.html),
+rules which match empty will be thoroughly rejected by the tree-sitter
+compiler.
+
+For example, this Treesitter grammar is not allowed because @$.listItem@ could match
+the empty string.
+
+> list: $ => seq("[", $.listItem, "]"),
+> listItem: $ => choice(
+>   seq(),
+>   "item"
+> ),
+
+Instead of having a rule that could match empty, Treesitter wants empty matches
+to be moved to /use-sites/ of that rule. The above grammar would be rewritten as:
+
+> list: $ => seq("[", optional($.listItem), "]"),
+> listItem: $ => choice(
+>   choice(),
+>   "item"
+> ),
+
+Unfortunately, the style Treesitter needs is quite incompatible with LBNF. LBNF
+has no way to express "choice" occuring within the right hand side of a rule,
+which forces any choice (including potential optionality) to happen at the
+top-level of a rule. This is in direct conflict with what Treesitter expects.
+
+This modules bridges this gap by transforming
+
+However, such rules are common in LBNF grammars, for example as a list
+that could be empty.
+
 
 -}
 module BNFC.Backend.TreeSitter.MatchesEmpty where
@@ -63,7 +101,7 @@ data MatchesEmpty a =
   -- | The contained value /accepts/ the empty string.
   MatchesEmpty a |
   -- | The contained value /does not/ accept the empty string.
-  NonEmpty a deriving (Eq, Show, Functor)
+  NonEmpty a deriving (Eq, Show)
 
 matchesEmpty :: MatchesEmpty a -> Bool
 matchesEmpty (MatchesEmpty _) = True
@@ -162,12 +200,12 @@ possiblyEmptyCat knownEmpty (_, rules) =
 possiblyEmptyCats :: [(Cat, [Rule])] -> KnownEmpty -> KnownEmpty
 possiblyEmptyCats cats knownEmpty =
   KnownEmpty $
-    Set.fromList (map (Left . fst) newEmpties)
+    Set.fromList (map (Left . fst) newEmptyCats)
       `Set.union` knownEmptySet knownEmpty
   where
-    newEmpties = filter (matchesEmpty . possiblyEmptyCat knownEmpty) cats
+    newEmptyCats = filter (matchesEmpty . possiblyEmptyCat knownEmpty) cats
 
--- * Fixpoint and transformations
+-- * Fixpoint and transformations #fixpoint#
 --
 -- $fixpoint
 -- For users of this module, these are the main functions of interest.

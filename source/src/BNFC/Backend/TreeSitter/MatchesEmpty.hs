@@ -29,8 +29,8 @@ the empty string.
 >   "item"
 > ),
 
-Instead of having a rule that could match empty, Treesitter wants empty matches
-to be moved to /use-sites/ of that rule. The above grammar would be rewritten as:
+Instead, Treesitter wants empty matches to be moved to /use-sites/ of that
+rule. The above grammar would be rewritten as:
 
 > list: $ => seq("[", optional($.listItem), "]"),
 > listItem: $ => choice(
@@ -43,12 +43,21 @@ has no way to express "choice" occuring within the right hand side of a rule,
 which forces any choice (including potential optionality) to happen at the
 top-level of a rule. This is in direct conflict with what Treesitter expects.
 
-This modules bridges this gap by transforming
+This modules bridges the gap by transforming LBNF's rules using process
+outlined above. This happens in two steps: first, we compute which rules could
+match empty by using a fixpoint algorithm, then, we transform the rules by
+eliminating empty matches from all rules and wrapping non-terminals in
+@optional@ if their rule could match empty. BNFC's "BNFC.CF" types have no
+notion of "optional" within the RHS, so this module also introduces 'OptSym' to
+represent this.
 
-However, such rules are common in LBNF grammars, for example as a list
-that could be empty.
+Of course, this transformation affects the parse tree for certain strings.
+Users of BNFC who want to generate Treesitter grammars should be aware of this
+change.
 
-
+For users of this library, the main functions of interest are in the [Fixpoint
+and transformations]("BNFC.Backend.TreeSitter.MatchesEmpty#g:fixpoint")
+section.
 -}
 module BNFC.Backend.TreeSitter.MatchesEmpty where
 
@@ -142,15 +151,14 @@ choiceMatchesEmpty           x            y  = MatchesEmpty (unMatchesEmpty x <>
 choiceListMatchesEmpty :: Monoid a => [MatchesEmpty a] -> MatchesEmpty a
 choiceListMatchesEmpty = foldr choiceMatchesEmpty (NonEmpty mempty)
 
--- TODO: if we have a rule like X ::= "" | "A", then we need to go Left []
--- for the first one to indicate that it DOES match empty and indicate that
--- there is nothing remaining if empty is removed.
-
--- * Analysis functions
+-- * Analysis of non-terminals
 
 -- | Determines whether the given symbol can match empty, according to the
 -- given known empty set. If it /can/ match empty, the symbol is returned as
 -- v'Optional' to indicate that uses of the symbol should match empty.
+--
+-- TODO: This does not yet handle /tokens/ (terminals) which might be empty.
+-- At the moment, all terminals are assumed to be non-empty.
 possiblyEmptySym :: KnownEmpty -> Sym -> OptSym
 possiblyEmptySym knownEmpty sym =
   if sym `isKnownEmpty` knownEmpty then

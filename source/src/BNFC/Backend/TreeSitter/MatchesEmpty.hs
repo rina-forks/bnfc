@@ -230,8 +230,11 @@ fixPointKnownEmpty cats = go (KnownEmpty Set.empty)
     go x = if x == x' then x else go x'
       where x' = step x
 
--- | Transforms the given sentence such that the returned sentence does not match
--- the empty string, and contains v'Optional' terms where needed.
+-- | Transforms the given sentence such that the returned sentential form does
+-- not match the empty string, and contains v'Optional' terms where needed.
+--
+-- The returned list is a /choice/ list which is equivalent to the given
+-- sentential form, but for the (potential) subtraction of empty matches.
 --
 -- v'Optional' is inserted around symbols which previously matched the empty
 -- string (according to the given 'KnownEmpty'). This compensates for

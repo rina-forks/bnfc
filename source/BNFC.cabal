@@ -31,7 +31,7 @@ Description:
   a LaTeX file containing a readable specification of the language.
 data-files:
   test/BNFC/Backend/TreeSitter/*.cf
-  test/BNFC/Backend/TreeSitter/*.js
+  test/BNFC/Backend/TreeSitter/*.expected.js
 
 -- Support range when build with cabal
 tested-with:

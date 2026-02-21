@@ -4,7 +4,7 @@ module.exports = grammar({
   rules: {
     Start: $ =>
       choice(
-        "a",
+        seq("a",optional($.Start)),
         choice()
       ),
   },

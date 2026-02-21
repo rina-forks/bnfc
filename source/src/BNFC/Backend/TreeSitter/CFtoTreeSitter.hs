@@ -174,8 +174,9 @@ prOneCat knownEmpty rules (ListCat cat) | enable =
   defineSymbol (formatCatName False (ListCat cat))
     $+$ (indent . appendComma $
       case (,) <$> singletonOrNilRule <*> consRule of
-        -- empty separator/terminator case
+        -- empty separator/terminator case.
         Just ([_], [x, _rec]) -> wrp "repeat1" (fmt [x])
+        Just ([], [x, _rec]) -> wrp "repeat1" (fmt [x]) -- empty match eliminated
 
         -- possibly-empty separator list, non-empty separator
         Just ([_], [x, sep, _rec]) -> wrapSeq [fmt [x], wrp "repeat" (fmt [sep, x])]

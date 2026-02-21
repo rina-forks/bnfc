@@ -178,14 +178,12 @@ possiblyEmptyCats cats knownEmpty =
 -- This should be given the full list of grammar rules, e.g., from
 -- 'BNFC.CF.ruleGroupsInternals'.
 fixPointKnownEmpty :: [(Cat, [Rule])] -> KnownEmpty
-fixPointKnownEmpty cats =
-  case fixPoint of
-    Just knownEmpty -> Trace.traceShowId knownEmpty
-    Nothing -> error "impossible due to fix point iteration"
+fixPointKnownEmpty cats = go (KnownEmpty Set.empty)
   where
-    knownEmptySeq = iterate (possiblyEmptyCats cats) (KnownEmpty Set.empty)
+    step = possiblyEmptyCats cats
 
-    fixPoint = fst <$> List.find (uncurry (==)) (knownEmptySeq `zip` drop 1 knownEmptySeq)
+    go x = if x == x' then x else go x'
+      where x' = step x
 
 -- | Transforms the given sentence such that the returned sentence does not match
 -- the empty string, and contains v'Optional' terms where needed.

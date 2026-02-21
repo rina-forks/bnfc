@@ -1,0 +1,8 @@
+rules Start ::= "1" [A];
+
+entrypoints Start;
+
+rules Opt ::= "X" | ;
+
+rules A ::= Opt;
+separator A ",";

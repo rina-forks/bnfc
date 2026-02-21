@@ -21,36 +21,86 @@ import qualified Data.List as List
 import qualified Data.Set as Set
 import qualified Debug.Trace as Trace
 
--- | A single non-terminal ('Cat') or terminal token name ('String').
--- A 'SentForm' is a list of these 'SentSym's.
-type SentSym = Either Cat String
+-- * Basic types
 
--- | Possibly empty non-terminals (Cat) or terminals (String, as token name).
-type KnownEmpty = Set.Set SentSym
-data Optional = Optional | NonOptional deriving (Eq, Show)
+-- | A symbol which is either a non-terminal ('Cat') or terminal token name ('String').
+-- A list of these 'Sym's is a sentential form, 'SentForm'.
+type Sym = Either Cat String
 
-type OptionalSentSym = (Optional, SentSym)
-type OptionalSentForm = [OptionalSentSym]
+-- | Set of 'Sym' which are known to match the empty string.
+newtype KnownEmpty = KnownEmpty (Set.Set Sym) deriving (Eq, Show)
 
-data MatchesEmpty a = MatchesEmpty a | NonEmpty a deriving (Eq, Show, Functor)
+-- | Returns whether the given symbol matches the empty string, according
+-- to the given known empty set.
+isKnownEmpty :: Sym -> KnownEmpty -> Bool
+isKnownEmpty x ks = x `Set.member` (knownEmptySet ks)
 
+knownEmptySet :: KnownEmpty -> Set.Set Sym
+knownEmptySet (KnownEmpty x) = x
+
+-- | Represents a 'Sym' which might be wrapped in a @optional(...)@ function
+-- in the produced Treesitter grammar.
+data OptSym =
+  -- | A 'Sym' which is wrapped in @optional([SYM])@, indicating that
+  -- it should match @[SYM]@ /or/ the empty string.
+  Optional Sym |
+  -- | A plain 'Sym' which matches only the 'Sym' itself.
+  NonOptional Sym deriving (Eq, Show)
+
+-- | A sentential form where each symbol may be wrapped in an optional function.
+-- Analagous to 'SentForm', but containing 'OptSym' instead of 'Sym'.
+type OptSentForm = [OptSym]
+
+-- * "Matches empty" type
+
+-- | Represents whether the wrapped value matches the empty string, or whether
+-- it is known to be non-empty.
+--
+-- Because this analysis is done on context-free grammars, the analysis is
+-- precise. A value of 'MatchesEmpty' /will/ accept the empty string, and a
+-- value of 'NonEmpty' will not. There is no uncertainty in this analysis.
+data MatchesEmpty a =
+  -- | The contained value /accepts/ the empty string.
+  MatchesEmpty a |
+  -- | The contained value /does not/ accept the empty string.
+  NonEmpty a deriving (Eq, Show, Functor)
+
+matchesEmpty :: MatchesEmpty a -> Bool
 matchesEmpty (MatchesEmpty _) = True
 matchesEmpty (NonEmpty _) = False
 
+unMatchesEmpty :: MatchesEmpty a -> a
 unMatchesEmpty (MatchesEmpty x) = x
 unMatchesEmpty (NonEmpty x) = x
 
+-- ** Sequential operators
+
+-- | Combines the two values /in sequence/. Returns v'MatchesEmpty' if both values
+-- are v'MatchesEmpty', otherwise returns v'NonEmpty'. In all cases, the inner
+-- values are joined using the semigroup operation.
 seqMatchesEmpty :: Semigroup a => MatchesEmpty a -> MatchesEmpty a -> MatchesEmpty a
 seqMatchesEmpty (MatchesEmpty x) (MatchesEmpty y) = MatchesEmpty (x <> y)
 seqMatchesEmpty               x                y  = NonEmpty (unMatchesEmpty x <> unMatchesEmpty y)
 
+-- | Combines the list of values /in sequence/ (i.e., @seq(x1, ..., xn)@), returning
+-- v'MatchesEmpty' if all are v'MatchesEmpty', otherwise v'NonEmpty'. Inner values
+-- are joined using the semigroup operation.
 seqListMatchesEmpty :: Monoid a => [MatchesEmpty a] -> MatchesEmpty a
 seqListMatchesEmpty = foldr seqMatchesEmpty (MatchesEmpty mempty)
 
+
+-- ** Alternation operators
+
+-- | Combines the two values as a /parallel choice/. Returns v'NonEmpty' if
+-- both values are v'NonEmpty', otherwise returns v'MatchesEmpty'. In all
+-- cases, the inner values are joined using the semigroup operation.
 choiceMatchesEmpty :: Semigroup a => MatchesEmpty a -> MatchesEmpty a -> MatchesEmpty a
 choiceMatchesEmpty (NonEmpty x) (NonEmpty y) = NonEmpty (x <> y)
 choiceMatchesEmpty           x            y  = MatchesEmpty (unMatchesEmpty x <> unMatchesEmpty y)
 
+-- | Combines the list of values /in choice/ (i.e., @choice(x1, ..., xn)@), returning
+-- v'NonEmpty' if all are v'NonEmpty', otherwise v'MatchesEmpty'. Inner values
+-- are joined using the semigroup operation.
 choiceListMatchesEmpty :: Monoid a => [MatchesEmpty a] -> MatchesEmpty a
 choiceListMatchesEmpty = foldr choiceMatchesEmpty (NonEmpty mempty)
 
@@ -58,47 +108,95 @@ choiceListMatchesEmpty = foldr choiceMatchesEmpty (NonEmpty mempty)
 -- for the first one to indicate that it DOES match empty and indicate that
 -- there is nothing remaining if empty is removed.
 
-possiblyEmptySentSym :: KnownEmpty -> SentSym -> MatchesEmpty OptionalSentSym
-possiblyEmptySentSym knownEmpty sym =
-  if sym `Set.member` knownEmpty then
-    MatchesEmpty (Optional, sym)
-  else
-    NonEmpty (NonOptional, sym)
+-- * Analysis functions
 
-possiblyEmptyRule :: KnownEmpty -> SentForm -> MatchesEmpty [OptionalSentForm]
+-- | Determines whether the given symbol can match empty, according to the
+-- given known empty set. If it /can/ match empty, the symbol is returned as
+-- v'Optional' to indicate that uses of the symbol should match empty.
+possiblyEmptySym :: KnownEmpty -> Sym -> OptSym
+possiblyEmptySym knownEmpty sym =
+  if sym `isKnownEmpty` knownEmpty then
+    Optional sym
+  else
+    NonOptional sym
+
+-- | Determines whether the given sentential form could match empty.
+--
+-- The returned list is a /choice/ list of 'OptSentForm', with v'Optional'
+-- applied to symbols which are within the known empty set. When combined using
+-- choice, the returned list is equivalent to the original rule, /except/ that
+-- the returned list has empty matches removed. If the rule previously matched
+-- empty, this is encoded as the v'MatchesEmpty' variant.
+possiblyEmptyRule :: KnownEmpty -> SentForm -> MatchesEmpty [OptSentForm]
 possiblyEmptyRule knownEmpty sent =
   case seqListMatchesEmpty sent' of
     MatchesEmpty syms -> MatchesEmpty $ Maybe.mapMaybe headNonOptional (List.tails syms)
     NonEmpty syms -> NonEmpty [syms]
   where
-    sent' = map (fmap pure . possiblyEmptySentSym knownEmpty) sent
+    sent' = map (fromOpt . possiblyEmptySym knownEmpty) sent
 
-    headNonOptional ((_,x):xs) = Just ((NonOptional, x) : xs)
+    fromOpt (Optional x) = MatchesEmpty [Optional x]
+    fromOpt (NonOptional x) = NonEmpty [NonOptional x]
+
+    headNonOptional (Optional x : xs) = Just (NonOptional x : xs)
+    headNonOptional (NonOptional _ : _) = error "headNonOptional: unexpected head is already NonOptional"
     headNonOptional [] = Nothing
 
--- | Returns whether the given Cat with the given Rules could match the empty
---   string, given the set of currently-known empty things.
-possiblyEmptyCat :: KnownEmpty -> (Cat, [Rule]) -> MatchesEmpty [OptionalSentForm]
+-- | Determines whether the given non-terminal category with the given
+-- production rules could match empty.
+--
+-- The returned list is a /choice/ list of 'OptSentForm', with v'Optional'
+-- applied to symbols which are within the known empty set. When combined using
+-- choice, the returned list is equivalent to the original rules, /except/ that
+-- the returned list has empty matches removed. If the category previously
+-- matched empty, this is encoded as the v'MatchesEmpty' variant.
+possiblyEmptyCat :: KnownEmpty -> (Cat, [Rule]) -> MatchesEmpty [OptSentForm]
 possiblyEmptyCat knownEmpty (_, rules) =
   choiceListMatchesEmpty $ map (possiblyEmptyRule knownEmpty . rhsRule) rules
 
+-- | Updates the set of known empty symbols according to the given grammar.
+-- Returns the new set, which is made up of the previous set unioned with any
+-- newly-discovered empty matching symbols.
+--
+-- This is one step of the fixpoint computation in 'fixPointKnownEmpty'.
 possiblyEmptyCats :: [(Cat, [Rule])] -> KnownEmpty -> KnownEmpty
 possiblyEmptyCats cats knownEmpty =
-  Set.fromList (map (Left . fst) newEmpties)
-    `Set.union` knownEmpty
+  KnownEmpty $
+    Set.fromList (map (Left . fst) newEmpties)
+      `Set.union` knownEmptySet knownEmpty
   where
     newEmpties = filter (matchesEmpty . possiblyEmptyCat knownEmpty) cats
 
+-- * Fixpoint and transformations
+--
+-- $fixpoint
+-- For users of this module, these are the main functions of interest.
+
+-- | Computes the complete set of symbols which are known to match empty,
+-- using the given non-terminal production rules.
+--
+-- This should be given the full list of grammar rules, e.g., from
+-- 'BNFC.CF.ruleGroupsInternals'.
 fixPointKnownEmpty :: [(Cat, [Rule])] -> KnownEmpty
 fixPointKnownEmpty cats =
   case fixPoint of
     Just knownEmpty -> Trace.traceShowId knownEmpty
     Nothing -> error "impossible due to fix point iteration"
   where
-    knownEmptySeq = iterate (possiblyEmptyCats cats) Set.empty
+    knownEmptySeq = iterate (possiblyEmptyCats cats) (KnownEmpty Set.empty)
 
     fixPoint = fst <$> List.find (uncurry (==)) (knownEmptySeq `zip` drop 1 knownEmptySeq)
 
-fixSentence :: KnownEmpty -> SentForm -> [OptionalSentForm]
-fixSentence knownEmpty = unMatchesEmpty . possiblyEmptyRule knownEmpty
+-- | Transforms the given sentence such that the returned sentence does not match
+-- the empty string, and contains v'Optional' terms where needed.
+--
+-- v'Optional' is inserted around symbols which previously matched the empty
+-- string (according to the given 'KnownEmpty'). This compensates for
+-- v'transformEmptyMatches' being applied to /other/ rules of the grammar.
+--
+-- After this transformation is applied to all rules of the grammar, the
+-- grammar should accept an identical language. However, the exact nodes which
+-- match certain strings might change.
+transformEmptyMatches :: KnownEmpty -> SentForm -> [OptSentForm]
+transformEmptyMatches knownEmpty = unMatchesEmpty . possiblyEmptyRule knownEmpty
 

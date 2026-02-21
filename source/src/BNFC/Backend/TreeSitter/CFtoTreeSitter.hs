@@ -15,7 +15,7 @@ module BNFC.Backend.TreeSitter.CFtoTreeSitter where
 
 import BNFC.Abs (Reg)
 import BNFC.Backend.TreeSitter.RegToJSReg
-import BNFC.Backend.TreeSitter.MatchesEmpty(fixSentence, fixPointKnownEmpty, KnownEmpty, Optional(..), OptionalSentForm)
+import BNFC.Backend.TreeSitter.MatchesEmpty(fixPointKnownEmpty, transformEmptyMatches, KnownEmpty, OptSym(..), OptSentForm)
 import BNFC.CF
 import BNFC.Lexing (mkRegMultilineComment, mkRegSingleLineComment)
 import BNFC.PrettyPrint
@@ -194,7 +194,7 @@ prOneCat knownEmpty rules (ListCat cat) | enable =
     consRule = rhsRule <$> List.find isConsFun rules
     singletonOrNilRule = singletonRule <|> nilRule
 
-    fmt = formatSent . map (\x -> (NonOptional, x))
+    fmt = formatSent . map NonOptional
     wrp s = wrapFun s False
 
 prOneCat knownEmpty rules nt =
@@ -215,7 +215,7 @@ prOneCat knownEmpty rules nt =
 
     intRhs = genChoice internalRules
 
-    genChoice = map (formatRhs . (fixSentence knownEmpty) . rhsRule)
+    genChoice = map (formatRhs . transformEmptyMatches knownEmpty . rhsRule)
 
 
 -- | Generate one tree-sitter rule for one defined token
@@ -263,14 +263,14 @@ refName :: String -> String
 refName = ("$." ++)
 
 -- | Format right hand side into list of strings
-formatRhs :: [OptionalSentForm] -> Doc
+formatRhs :: [OptSentForm] -> Doc
 formatRhs = wrapChoice . map formatSent
 
-formatSent :: OptionalSentForm -> Doc
-formatSent = wrapSeq . map (\(isOpt, x) -> isOptional isOpt (fmt x))
+formatSent :: OptSentForm -> Doc
+formatSent = wrapSeq . map fmtOpt
   where
-    isOptional Optional = wrapFun "optional" False
-    isOptional NonOptional = id
+    fmtOpt (Optional x) = wrapFun "optional" False (fmt x)
+    fmtOpt (NonOptional x) = fmt x
 
     fmt (Left c) = text $ refName $ formatCatName False c
     fmt (Right term) = quoted term

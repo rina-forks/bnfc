@@ -149,6 +149,8 @@ data SharedOptions = Options
   --- C# specific
   , visualStudio  :: Bool        -- ^ Generate Visual Studio solution/project files.
   , wcf           :: Bool        -- ^ Windows Communication Foundation.
+  --- Tree-sitter specific
+  , treeSitterWord :: String     -- ^ Option @--tree-sitter-word@.
   } deriving (Eq, Ord, Show)
 
 -- We take this opportunity to define the type of the backend functions.
@@ -183,6 +185,8 @@ defaultOptions = Options
   -- C# specific
   , visualStudio    = False
   , wcf             = False
+  --- Tree-sitter specific
+  , treeSitterWord  = "Ident"
   }
 
 -- | Check whether an option is unchanged from the default.
@@ -395,6 +399,10 @@ specificOptions =
   , ( Option []    ["agda"] (NoArg (\o -> o { agda = True, tokenText = TextToken }))
           "Also generate Agda bindings for the abstract syntax"
     , [TargetHaskell] )
+  -- Tree-sitter backend:
+  , ( Option []    ["tree-sitter-word"] (ReqArg (\x o -> o { treeSitterWord = x }) "TOKEN")
+          "Use the given BNFC symbol as tree-sitter's \"word\" token"
+    , [TargetTreeSitter] )
   ]
 
 -- | The list of specific options for a target.
@@ -457,7 +465,7 @@ help = unlines $ title ++
     , usageInfo "TARGET languages" targetOptions
     ] ++ map targetUsage helpTargets
   where
-  helpTargets = [ TargetHaskell, TargetJava, TargetC, TargetCpp ]
+  helpTargets = [ TargetHaskell, TargetJava, TargetC, TargetCpp, TargetTreeSitter ]
   targetUsage t = usageInfo
     (printf "Special options for the %s backend" (show t))
     (specificOptions' t)

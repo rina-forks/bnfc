@@ -66,7 +66,6 @@ import BNFC.CF(SentForm, Cat, Rule, rhsRule)
 import qualified Data.Maybe as Maybe
 import qualified Data.List as List
 import qualified Data.Set as Set
-import qualified Debug.Trace as Trace
 
 -- * Basic types
 

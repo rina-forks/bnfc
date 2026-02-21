@@ -6,31 +6,31 @@ module.exports = grammar({
       $.Start,
     Start: $ =>
       choice(
-        seq("1",$.list_NonEmptySeparator),
-        seq("2",optional($.list_MaybeEmptySeparator)),
-        seq("3",$.list_NonEmptyTerminator),
-        seq("4",optional($.list_MaybeEmptyTerminator)),
-        seq("5",optional($.list_MaybeEmptySeparatorEmptySep)),
-        seq("6",optional($.list_MaybeEmptyTerminatorEmptySep)),
-        seq("7",$.list_NonEmptySeparatorEmptySep),
-        seq("8",$.list_NonEmptyTerminatorEmptySep)
+        seq("1", $.list_NonEmptySeparator),
+        seq("2", optional($.list_MaybeEmptySeparator)),
+        seq("3", $.list_NonEmptyTerminator),
+        seq("4", optional($.list_MaybeEmptyTerminator)),
+        seq("5", optional($.list_MaybeEmptySeparatorEmptySep)),
+        seq("6", optional($.list_MaybeEmptyTerminatorEmptySep)),
+        seq("7", $.list_NonEmptySeparatorEmptySep),
+        seq("8", $.list_NonEmptyTerminatorEmptySep)
       ),
     NonEmptySeparator: $ =>
       "a",
     list_NonEmptySeparator: $ =>
-      seq($.NonEmptySeparator,repeat(seq(",",$.NonEmptySeparator))),
+      seq($.NonEmptySeparator, repeat(seq(",", $.NonEmptySeparator))),
     MaybeEmptySeparator: $ =>
       "a",
     list_MaybeEmptySeparator: $ =>
-      seq($.MaybeEmptySeparator,repeat(seq(",",$.MaybeEmptySeparator))),
+      seq($.MaybeEmptySeparator, repeat(seq(",", $.MaybeEmptySeparator))),
     NonEmptyTerminator: $ =>
       "a",
     list_NonEmptyTerminator: $ =>
-      repeat1(seq($.NonEmptyTerminator,",")),
+      repeat1(seq($.NonEmptyTerminator, ",")),
     MaybeEmptyTerminator: $ =>
       "a",
     list_MaybeEmptyTerminator: $ =>
-      repeat1(seq($.MaybeEmptyTerminator,",")),
+      repeat1(seq($.MaybeEmptyTerminator, ",")),
     MaybeEmptySeparatorEmptySep: $ =>
       "a",
     list_MaybeEmptySeparatorEmptySep: $ =>

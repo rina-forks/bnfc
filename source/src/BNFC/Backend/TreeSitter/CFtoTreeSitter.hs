@@ -23,9 +23,8 @@ import BNFC.PrettyPrint
 import Prelude hiding ((<>))
 import Control.Applicative ((<|>))
 
-import qualified Data.Maybe as Maybe
 import qualified Data.List as List
-import qualified Debug.Trace as Trace
+import qualified Data.Maybe as Maybe
 import qualified Data.List.NonEmpty as List1
 
 -- | Indent one level of 2 spaces
@@ -33,26 +32,24 @@ indent :: Doc -> Doc
 indent = nest 2
 
 -- | Create content of grammar.js file
-cfToTreeSitter :: String -> CF -> Doc
-cfToTreeSitter name cf =
+cfToTreeSitter :: String -> Cat -> CF -> Doc
+cfToTreeSitter name wordCat cf =
   -- Overall structure of grammar.js
   text "module.exports = grammar({"
     $+$ indent
       ( text "name: '" <> text name <> text "',"
           $+$ extrasSection
-          -- TODO: wordSection should point to the identifier name, and should be customisable?
-          -- $+$ wordSection
+          $+$ wordSection
           $+$ rulesSection
       )
     $+$ text "});"
   where
     extrasSection = prExtras cf
-    wordSection = prWord cf
+    wordSection = prWord wordCat cf
     rulesSection =
       text "rules: {"
         $+$ indent
           ( prRules cf
-              -- $+$ prWord cf
               $+$ prUsrTokenRules cf
               $+$ prBuiltinTokenRules cf
           )
@@ -88,25 +85,17 @@ prExtras cf =
 --   we should enumerate all defined tokens against all occurrences of
 --   keywords. Any tokens patterns that could accept a keyword will go
 --   into this list. This will require integration of a regex engine.
-prWord :: CF -> Doc
-prWord cf =
-  if wordNeeded
-    then
+prWord :: Cat -> CF -> Doc
+prWord wordCat cf =
+  if not wordCatValid then
+    error "specified tree-sitter word token not found in BNFC grammar"
+  else
+    if isUsedCat cf wordCat then
       defineSymbol "word"
-        $+$ indent
-          ( wrapChoice
-              ( usrTokensFormatted
-                  ++ [text "$.token_Ident" | identUsed]
-              )
-          )
-          <> ","
+        <+> formatSent [NonOptional (Left wordCat)] <> ","
     else empty
   where
-    wordNeeded = identUsed || usrTokens /= []
-    identUsed = isUsedCat cf (TokenCat catIdent)
-    usrTokens = tokenPragmas cf
-    usrTokensFormatted =
-      map (text . refName . formatCatName False . TokenCat . fst) $ usrTokens
+    wordCatValid = wordCat == TokenCat catIdent || wordCat `elem` allParserCats cf
 
 -- | Print builtin token rules according to their usage
 prBuiltinTokenRules :: CF -> Doc
@@ -178,7 +167,7 @@ hasInternal = not . all isParsable
 -- be sectioned as such.
 prOneCat :: KnownEmpty -> (Doc -> Doc) -> NonTerminal -> [Rule] -> Doc
 
-prOneCat knownEmpty wrapRhs nt@(ListCat _) rules | enable =
+prOneCat _ wrapRhs nt@(ListCat _) rules | enable =
   defineSymbol (formatCatName False nt)
     $+$ (indent . appendComma . wrapRhs $
       case (,) <$> singletonOrNilRule <*> consRule of
@@ -243,10 +232,11 @@ commaJoin :: Bool -> [Doc] -> Doc
 commaJoin newline =
   foldl comma empty
   where
+    commaString = if newline then "," else ", "
     comma a b
       | isEmpty a = b
       | isEmpty b = a
-      | otherwise = (if newline then ($+$) else (<>)) (a <> ",") b
+      | otherwise = (if newline then ($+$) else (<>)) (a <> commaString) b
 
 wrapSeq :: [Doc] -> Doc
 wrapSeq = wrapOptListFun "seq" False
@@ -263,14 +253,15 @@ wrapOptional' = wrapFun "optional" True
 -- | Wrap list using tree-sitter fun if the list contains multiple items
 -- Returns the only item without wrapping otherwise
 wrapOptListFun :: String -> Bool -> [Doc] -> Doc
-wrapOptListFun _ _ [x] = x
-wrapOptListFun fun _ [] = wrapFun fun False empty
+wrapOptListFun _   _ [x] = x
+wrapOptListFun fun _ [ ] = wrapFun fun False empty
 wrapOptListFun fun newline list = wrapFun fun newline (commaJoin newline list)
 
 wrapFun :: String -> Bool -> Doc -> Doc
-wrapFun fun newline arg = joinOp [text fun <> text "(", indent arg, text ")"]
+wrapFun fun newline arg = joinOp [text fun <> text "(", indentOp arg, text ")"]
   where
     joinOp = if newline then vcat' else hcat
+    indentOp = if newline then indent else id
 
 -- | Helper for referring to non-terminal names in tree-sitter
 refName :: String -> String

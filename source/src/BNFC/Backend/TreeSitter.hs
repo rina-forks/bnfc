@@ -22,9 +22,10 @@ import BNFC.PrettyPrint
 -- | Entry point: create grammar.js file
 makeTreeSitter :: SharedOptions -> CF -> Backend
 makeTreeSitter opts cf = do
-  mkfile "grammar.js" comment (render $ cfToTreeSitter name cf)
+  mkfile "grammar.js" comment (render $ cfToTreeSitter name wordCat cf)
   where
     name = lang opts
+    wordCat = strToCat (treeSitterWord opts)
 
 comment :: String -> String
 comment = ("// " ++)

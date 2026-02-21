@@ -13,8 +13,8 @@ module.exports = grammar({
       ),
     TransitivelyOptional: $ =>
       choice(
-        seq($.A,optional($.B),optional($.C)),
-        seq($.B,optional($.C)),
+        seq($.A, optional($.B), optional($.C)),
+        seq($.B, optional($.C)),
         $.C
       ),
     A: $ =>
@@ -33,6 +33,6 @@ module.exports = grammar({
         choice()
       ),
     NonOptional: $ =>
-      seq("x",optional($.A),optional($.B),optional($.C)),
+      seq("x", optional($.A), optional($.B), optional($.C)),
   },
 });

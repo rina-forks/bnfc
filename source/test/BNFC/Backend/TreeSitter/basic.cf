@@ -1,4 +1,4 @@
 -- start symbol should be allowed to be optional
-rules Start ::= "a" Start | ;
+rules Start ::= Ident Start | ;
 
 

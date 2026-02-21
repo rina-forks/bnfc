@@ -16,7 +16,7 @@ module BNFC.Backend.TreeSitter.CFtoTreeSitter where
 import BNFC.Abs (Reg (RSeq, RSeqs, RStar, RAny))
 import BNFC.Backend.TreeSitter.RegToJSReg
 import BNFC.CF
-import BNFC.Lexing (mkRegMultilineComment)
+import BNFC.Lexing (mkRegMultilineComment, mkRegSingleLineComment)
 import BNFC.PrettyPrint
 import Prelude hiding ((<>))
 import Control.Applicative ((<|>))
@@ -76,8 +76,8 @@ prExtras cf =
     (commentMRules, commentSRules) = comments cf
     mRules = vcat' $ map mkOneMRule commentMRules
     sRules = vcat' $ map mkOneSRule commentSRules
-    mkOneSRule s = text (printRegJSReg $ RSeq (RSeqs s) (RStar RAny)) <> text ","
-    mkOneMRule (s, e) = text (printRegJSReg $ mkRegMultilineComment s e) <> text ","
+    mkOneSRule s = text (printRegJSReg $ mkRegSingleLineComment s) <> ","
+    mkOneMRule (s, e) = text (printRegJSReg $ mkRegMultilineComment s e) <> ","
 
 -- | Print word section, this section is needed for tree-sitter
 --   to do keyword extraction before any parsing/lexing, see

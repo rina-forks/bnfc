@@ -2,6 +2,15 @@
 module.exports = grammar({
   name: 'seq',
   rules: {
+    BNFCStart: $ =>
+      optional(choice(
+                 $.Start,
+                 $.TransitivelyOptional,
+                 $.A,
+                 $.B,
+                 $.C,
+                 $.NonOptional
+               )),
     Start: $ =>
       choice(
         $.TransitivelyOptional,

@@ -2,6 +2,26 @@
 module.exports = grammar({
   name: 'list',
   rules: {
+    BNFCStart: $ =>
+      optional(choice(
+                 $.Start,
+                 $.NonEmptySeparator,
+                 $.list_NonEmptySeparator,
+                 $.MaybeEmptySeparator,
+                 $.list_MaybeEmptySeparator,
+                 $.NonEmptyTerminator,
+                 $.list_NonEmptyTerminator,
+                 $.MaybeEmptyTerminator,
+                 $.list_MaybeEmptyTerminator,
+                 $.MaybeEmptySeparatorEmptySep,
+                 $.list_MaybeEmptySeparatorEmptySep,
+                 $.MaybeEmptyTerminatorEmptySep,
+                 $.list_MaybeEmptyTerminatorEmptySep,
+                 $.NonEmptySeparatorEmptySep,
+                 $.list_NonEmptySeparatorEmptySep,
+                 $.NonEmptyTerminatorEmptySep,
+                 $.list_NonEmptyTerminatorEmptySep
+               )),
     Start: $ =>
       choice(
         seq("1",$.list_NonEmptySeparator),

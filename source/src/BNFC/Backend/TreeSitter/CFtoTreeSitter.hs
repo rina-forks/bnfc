@@ -15,7 +15,7 @@ module BNFC.Backend.TreeSitter.CFtoTreeSitter where
 
 import BNFC.Abs (Reg)
 import BNFC.Backend.TreeSitter.RegToJSReg
-import BNFC.Backend.TreeSitter.MatchesEmpty(fixPointKnownEmpty, transformEmptyMatches, KnownEmpty, OptSym(..), OptSentForm)
+import BNFC.Backend.TreeSitter.MatchesEmpty(fixPointKnownEmpty, transformEmptyMatches, KnownEmpty, OptSym(..), OptSentForm, isKnownEmpty)
 import BNFC.CF
 import BNFC.Lexing (mkRegMultilineComment, mkRegSingleLineComment)
 import BNFC.PrettyPrint
@@ -26,6 +26,7 @@ import Control.Applicative ((<|>))
 import qualified Data.Maybe as Maybe
 import qualified Data.List as List
 import qualified Debug.Trace as Trace
+import qualified Data.List.NonEmpty as List1
 
 -- | Indent one level of 2 spaces
 indent :: Doc -> Doc
@@ -134,25 +135,26 @@ identRule =
 --   Then print rest of the rules
 prRules :: CF -> Doc
 prRules cf =
-  -- Trace.traceShow (possiblyEmptyCats (ruleGroupsInternals cf) Set.empty) $
-  if onlyOneEntry
-    then
-      -- TODO: the entry token is allowed to be empty. if it can be empty, just choice it with empty or something.
-      prOneCat knownEmpty (Trace.traceShow (map (render .pretty) entryRules) entryRules) entryCat
-        $+$ vcat' (map (uncurry (prOneCat knownEmpty)) otherRules)
-    else error "Tree-sitter only supports one entrypoint"
+    -- TODO: the entry token is allowed to be empty. if it can be empty, just choice it with empty or something.
+    prOneCat knownEmpty wrapEntry virtualEntryCat virtualEntryRhsRules
+      $+$ vcat' (map (uncurry (prOneCat knownEmpty id)) allGroups)
   where
-    --If entrypoint is defined, there must be only one entrypoint
-    --If it is not defined, defaults to use the first rule as entrypoint
-    onlyOneEntry = not (hasEntryPoint cf) || onlyOneEntryDefined
-    onlyOneEntryDefined = length (allEntryPoints cf) == 1
+    allGroups = ruleGroupsInternals cf
 
-    entryCat = firstEntry cf
-    entryRules = rulesForCat' cf entryCat
+    virtualEntryCat = Cat "BNFCStart"
+    virtualEntryRhsCats = List1.toList (allEntryPoints cf)
+    virtualEntryRhsRules = toRule virtualEntryCat <$> virtualEntryRhsCats
 
-    otherRules = [(rs, c) | (c, rs) <- ruleGroupsInternals cf, c /= entryCat]
+    toRule cat rhsCat =
+      npRule ("BNFCStart_" ++ identCat rhsCat) cat [Left rhsCat] Parsable
 
-    knownEmpty = fixPointKnownEmpty (ruleGroupsInternals cf)
+    wrapEntry =
+      if any ((`isKnownEmpty` knownEmpty) . Left) virtualEntryRhsCats then
+        wrapOptional
+      else
+        id
+
+    knownEmpty = fixPointKnownEmpty allGroups
 
 prUsrTokenRules :: CF -> Doc
 prUsrTokenRules cf = vcat' $ map prOneToken tokens
@@ -168,11 +170,11 @@ hasInternal = not . all isParsable
 -- If the non-terminal has internal rules, an internal version of the non-terminal
 -- will be created (prefixed with "_" in tree-sitter), and all internal rules will
 -- be sectioned as such.
-prOneCat :: KnownEmpty -> [Rule] -> NonTerminal -> Doc
+prOneCat :: KnownEmpty -> (Doc -> Doc) -> NonTerminal -> [Rule] -> Doc
 
-prOneCat knownEmpty rules (ListCat cat) | enable =
-  defineSymbol (formatCatName False (ListCat cat))
-    $+$ (indent . appendComma $
+prOneCat knownEmpty wrapRhs nt@(ListCat _) rules | enable =
+  defineSymbol (formatCatName False nt)
+    $+$ (indent . appendComma . wrapRhs $
       case (,) <$> singletonOrNilRule <*> consRule of
         -- empty separator/terminator case.
         Just ([_], [x, _rec]) -> wrp "repeat1" (fmt [x])
@@ -198,23 +200,22 @@ prOneCat knownEmpty rules (ListCat cat) | enable =
     fmt = formatSent . map NonOptional
     wrp s = wrapFun s False
 
-prOneCat knownEmpty rules nt =
+prOneCat knownEmpty wrapRhs nt rules =
   defineSymbol (formatCatName False nt)
-    $+$ indentChoice parRhs
+    $+$ indentCommaChoice (wrapRhs parRhs)
     $+$
       (if hasInternal
-        then defineSymbol (formatCatName True nt) $+$ indentChoice intRhs
+        then defineSymbol (formatCatName True nt) $+$ indentCommaChoice intRhs
         else empty)
   where
     (parsableRules, internalRules) = List.partition isParsable rules
-    hasInternal = not $ null internalRules
+    hasInternal = not (null internalRules)
 
-    indentChoice = indent . appendComma . wrapChoice
+    indentCommaChoice = indent . appendComma
 
     internalTokenName = [text $ refName $ formatCatName True nt | hasInternal]
-    parRhs = internalTokenName ++ genChoice parsableRules
-
-    intRhs = genChoice internalRules
+    parRhs = wrapChoice (internalTokenName ++ genChoice parsableRules)
+    intRhs = wrapChoice (genChoice internalRules)
 
     genChoice = map (formatRhs . transformEmptyMatches knownEmpty . rhsRule)
 
@@ -247,6 +248,9 @@ wrapSeq = wrapOptListFun "seq" False
 wrapChoice :: [Doc] -> Doc
 wrapChoice = wrapOptListFun "choice" True
 
+wrapOptional :: Doc -> Doc
+wrapOptional = wrapFun "optional" False
+
 -- | Wrap list using tree-sitter fun if the list contains multiple items
 -- Returns the only item without wrapping otherwise
 wrapOptListFun :: String -> Bool -> [Doc] -> Doc
@@ -270,7 +274,7 @@ formatRhs = wrapChoice . map formatSent
 formatSent :: OptSentForm -> Doc
 formatSent = wrapSeq . map fmtOpt
   where
-    fmtOpt (Optional x) = wrapFun "optional" False (fmt x)
+    fmtOpt (Optional x) = wrapOptional (fmt x)
     fmtOpt (NonOptional x) = fmt x
 
     fmt (Left c) = text $ refName $ formatCatName False c

@@ -1,12 +1,15 @@
 module BNFC.Backend.TreeSitterSpec where
 
 import qualified Paths_BNFC
-import System.FilePath((</>), (<.>), takeBaseName)
+
+import System.FilePath
+import System.Directory(listDirectory)
 
 import BNFC.Options
 import BNFC.GetCF
 
 import Test.Hspec
+import Test.HUnit ((@?))
 import BNFC.Hspec
 
 import BNFC.Backend.TreeSitter -- SUT
@@ -20,14 +23,18 @@ getCalc = parseCF  calcOptions TargetTreeSitter $
           , "EInt. Exp2  ::= Integer ;"
           , "coercions Exp 2 ;" ]
 
-runFileTest basename = do
-  let opts = (defaultOptions { lang = basename})
-
+listDataFiles = do
   dataDir <- Paths_BNFC.getDataDir
-  let readDataFile x = readFile (dataDir </> "test/BNFC/Backend/TreeSitter" </> x)
+  let dir = dataDir </> "test/BNFC/Backend/TreeSitter"
 
-  bnfc <- readDataFile (basename <.> "cf")
-  expected <- readDataFile (basename <.> "expected.js")
+  files <- listDirectory dir
+  pure $ map (dir </>) $ filter ("cf" `isExtensionOf`) files
+
+runFileTest filename = do
+  let opts = (defaultOptions { lang = takeBaseName filename})
+
+  bnfc <- readFile (filename -<.> "cf")
+  expected <- readFile (filename -<.> "expected.js")
 
   cf <- parseCF opts TargetTreeSitter bnfc
   let backend = makeTreeSitter opts cf
@@ -36,7 +43,7 @@ runFileTest basename = do
 
 makeFileTest filename =
   it ("tree-sitter expect test: " <> filename) $
-    runFileTest (takeBaseName filename)
+    runFileTest filename
 
 spec = do
 
@@ -45,6 +52,9 @@ spec = do
       calc <- getCalc
       makeTreeSitter calcOptions calc `shouldGenerate` "grammar.js"
 
-    makeFileTest "basic.cf"
-    makeFileTest "list.cf"
-    makeFileTest "basic.cf"
+    cfFiles <- runIO listDataFiles
+
+    it "should find at least one expect test" $ do
+      not (null cfFiles) @? "no .cf files found"
+
+    mapM_ makeFileTest cfFiles

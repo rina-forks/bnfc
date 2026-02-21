@@ -11,8 +11,6 @@ rules Start ::=
   | "7" [NonEmptySeparatorEmptySep]
   | "8" [NonEmptyTerminatorEmptySep];
 
-entrypoints Start;
-
 rules NonEmptySeparator ::= "a";
 separator nonempty NonEmptySeparator ",";
 

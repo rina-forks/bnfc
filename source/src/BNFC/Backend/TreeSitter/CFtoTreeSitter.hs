@@ -137,7 +137,9 @@ prRules cf =
     allGroups = ruleGroupsInternals cf
 
     virtEntryCat = Cat "BNFCStart"
-    virtEntryRhsCats = List1.toList (allEntryPoints cf)
+    virtEntryRhsCats =
+      (if hasEntryPoint cf then List1.toList else List1.take 1)
+      (allEntryPoints cf)
     virtEntryRhsRules = toVirtRule <$> virtEntryRhsCats
 
     toVirtRule rhsCat =

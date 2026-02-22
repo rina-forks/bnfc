@@ -103,13 +103,9 @@ prWord wordCat cf =
 -- (and is the only rule which can be).
 prRules :: CF -> Doc
 prRules cf =
-  prOneCat knownEmpty wrapEntry virtEntryCat virtEntryRhsRules
-    $+$ vcat' (map (uncurry (prOneCat knownEmpty id)) groups)
+  prOneCat knownEmpty True virtEntryCat virtEntryRhsRules
+    $+$ vcat' (map (uncurry (prOneCat knownEmpty False)) groups)
   where
-    wrapEntry =
-      applyWhen (any ((`isKnownEmpty` knownEmpty) . Left) virtEntryRhsCats) $
-        wrapOptional'
-
     groups = ruleGroups cf
 
     virtEntryCat = Cat "BNFCStart"
@@ -125,7 +121,7 @@ prRules cf =
         [Left rhsCat]
         Parsable
 
-    knownEmpty = fixPointKnownEmpty groups
+    knownEmpty = fixPointKnownEmpty ((virtEntryCat, virtEntryRhsRules) : groups)
 
 prTokenRules :: CF -> [(Reg, TokenCat)] -> Doc
 prTokenRules cf lexTokens = vcat' (map prOneToken usedTokens)
@@ -139,11 +135,14 @@ prOneToken (reg, name) =
     $+$ indent (text $ printRegJSReg reg) <> ","
 
 -- | Generates one tree-sitter rule for one non-terminal from CF.
-prOneCat :: KnownEmpty -> (Doc -> Doc) -> NonTerminal -> [Rule] -> Doc
-prOneCat knownEmpty wrapRhs nt rules =
+prOneCat :: KnownEmpty -> Bool -> NonTerminal -> [Rule] -> Doc
+prOneCat knownEmpty allowEmpty nt rules =
   defineSymbol (formatCatName False nt)
     $+$ indent (appendComma (wrapRhs parRhs))
   where
+    wrapRhs = applyWhen (allowEmpty && Left nt `isKnownEmpty` knownEmpty) $
+      wrapOptional'
+
     (parsableRules, _) = List.partition isParsable rules
 
     parRhs = wrapChoice (genRules parsableRules)

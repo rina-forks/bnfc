@@ -17,7 +17,7 @@ import BNFC.Abs (Reg)
 import BNFC.Backend.TreeSitter.RegToJSReg
 import BNFC.Backend.TreeSitter.MatchesEmpty(fixPointKnownEmpty, transformEmptyMatches, KnownEmpty, OptSym(..), OptSentForm, isKnownEmpty)
 import BNFC.CF
-import BNFC.Utils(when, applyWhen)
+import BNFC.Utils(when, applyWhen, cstring)
 import BNFC.Lexing (mkLexer, LexType(..))
 import BNFC.PrettyPrint
 
@@ -38,7 +38,7 @@ cfToTreeSitter name wordCat cf =
   -- Overall structure of grammar.js
   text "module.exports = grammar({"
     $+$ indent
-      ( text "name: '" <> text name <> text "',"
+      ( text "name:" <+> cstring name <> ","
           $+$ extrasSection
           $+$ wordSection
           $+$ rulesSection
@@ -104,13 +104,13 @@ prWord wordCat cf =
 prRules :: CF -> Doc
 prRules cf =
   prOneCat knownEmpty wrapEntry virtEntryCat virtEntryRhsRules
-    $+$ vcat' (map (uncurry (prOneCat knownEmpty id)) allGroups)
+    $+$ vcat' (map (uncurry (prOneCat knownEmpty id)) groups)
   where
     wrapEntry =
       applyWhen (any ((`isKnownEmpty` knownEmpty) . Left) virtEntryRhsCats) $
         wrapOptional'
 
-    allGroups = ruleGroupsInternals cf
+    groups = ruleGroups cf
 
     virtEntryCat = Cat "BNFCStart"
     virtEntryRhsCats =
@@ -125,47 +125,33 @@ prRules cf =
         [Left rhsCat]
         Parsable
 
-    knownEmpty = fixPointKnownEmpty allGroups
+    knownEmpty = fixPointKnownEmpty groups
 
 prTokenRules :: CF -> [(Reg, TokenCat)] -> Doc
 prTokenRules cf lexTokens = vcat' (map prOneToken usedTokens)
   where
     usedTokens = filter (isUsedCat cf . TokenCat . snd) lexTokens
 
--- | Generate one tree-sitter rule for one defined token
+-- | Generate one tree-sitter rule for one terminal token.
 prOneToken :: (Reg, TokenCat) -> Doc
 prOneToken (reg, name) =
   defineSymbol (formatCatName False $ TokenCat name)
     $+$ indent (text $ printRegJSReg reg) <> ","
 
--- | Check if a set of rules contains internal rules
-hasInternal :: [Rule] -> Bool
-hasInternal = not . all isParsable
-
--- | Generates one or two tree-sitter rule(s) for one non-terminal from CF.
--- Uses choice function from tree-sitter to combine rules for the non-terminal
--- If the non-terminal has internal rules, an internal version of the non-terminal
--- will be created (prefixed with "_" in tree-sitter), and all internal rules will
--- be sectioned as such.
+-- | Generates one tree-sitter rule for one non-terminal from CF.
 prOneCat :: KnownEmpty -> (Doc -> Doc) -> NonTerminal -> [Rule] -> Doc
 prOneCat knownEmpty wrapRhs nt rules =
   defineSymbol (formatCatName False nt)
     $+$ indent (appendComma (wrapRhs parRhs))
-    $+$
-      when hasInternal
-        (defineSymbol (formatCatName True nt) $+$ indent (appendComma intRhs))
   where
-    (parsableRules, internalRules) = List.partition isParsable rules
-    hasInternal = not (null internalRules)
+    (parsableRules, _) = List.partition isParsable rules
 
-    internalTokenName = [text $ refName $ formatCatName True nt | hasInternal]
-    parRhs = wrapChoice (internalTokenName ++ genRules parsableRules)
-    intRhs = wrapChoice (genRules internalRules)
+    parRhs = wrapChoice (genRules parsableRules)
 
-    genRule rule =
-      ("//" <+> text (renderOneLine (pretty rule)))
-      $+$ (formatRhs . transformEmptyMatches knownEmpty) (rhsRule rule)
     genRules = map genRule
+    genRule rule =
+      ("//" <+> text (renderOneLine (pretty rule)) <+> ";")
+      $+$ (formatRhs . transformEmptyMatches knownEmpty) (rhsRule rule)
 
     renderOneLine = renderStyle (style { mode = OneLineMode })
 
@@ -226,10 +212,7 @@ formatSent = wrapSeq . map fmtOpt
     fmtOpt (NonOptional x) = fmt x
 
     fmt (Left c) = text $ refName $ formatCatName False c
-    fmt (Right term) = quoted term
-
-quoted :: String -> Doc
-quoted s = text "\"" <> text s <> text "\""
+    fmt (Right term) = cstring term
 
 -- | Format string for cat name, prefix "_" if the name is for internal rules
 formatCatName :: Bool -> Cat -> String

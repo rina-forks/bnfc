@@ -229,8 +229,8 @@ possiblyEmptyCats cats knownEmpty =
 -- | Computes the complete set of symbols which are known to match empty,
 -- using the given non-terminal production rules.
 --
--- This should be given the full list of grammar rules, e.g., from
--- 'BNFC.CF.ruleGroupsInternals'.
+-- This should be given the list of parsable grammar rules, e.g., from
+-- 'BNFC.CF.ruleGroups.
 fixPointKnownEmpty :: [(Cat, [Rule])] -> KnownEmpty
 fixPointKnownEmpty cats = go (KnownEmpty Set.empty)
   where

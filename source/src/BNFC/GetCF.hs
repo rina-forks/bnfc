@@ -20,7 +20,6 @@
 module BNFC.GetCF
   ( parseCF, parseRawCF
   , checkRule, transItem
-  , FixTokenCats
   , fixTokenCats
   ) where
 

@@ -13,9 +13,12 @@
 
 module BNFC.Backend.TreeSitter where
 
+import System.FilePath
+
 import BNFC.Backend.Base
 import BNFC.Backend.TreeSitter.CFtoTreeSitter (cfToTreeSitter)
-import BNFC.GetCF(fixTokenCats, FixTokenCats)
+import BNFC.GetCF(fixTokenCats)
+import BNFC.Utils(kebabCase_, snakeCase_)
 import BNFC.CF
 import BNFC.Options hiding (Backend)
 import BNFC.PrettyPrint
@@ -23,9 +26,11 @@ import BNFC.PrettyPrint
 -- | Entry point: create grammar.js file
 makeTreeSitter :: SharedOptions -> CF -> Backend
 makeTreeSitter opts cf = do
-  mkfile "grammar.js" comment (render $ cfToTreeSitter name wordCat cf)
+  mkfile (dir </> "grammar.js") comment $
+    render (cfToTreeSitter name wordCat cf)
   where
-    name = lang opts
+    name = snakeCase_ (lang opts)
+    dir = "tree-sitter-" ++ kebabCase_ (lang opts)
     wordCat = fixTokenCats (tokenNames cf) (strToCat (treeSitterWord opts))
 
 comment :: String -> String

@@ -20,6 +20,8 @@
 module BNFC.GetCF
   ( parseCF, parseRawCF
   , checkRule, transItem
+  , FixTokenCats
+  , fixTokenCats
   ) where
 
 import Control.Arrow (left)

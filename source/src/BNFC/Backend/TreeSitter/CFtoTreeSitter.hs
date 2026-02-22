@@ -85,15 +85,9 @@ prExtras commentRegs =
 --   into this list. This will require integration of a regex engine.
 prWord :: Cat -> CF -> Doc
 prWord wordCat cf =
-  if not wordCatValid then
-    error "specified tree-sitter word token not found in BNFC grammar"
-  else
-    when (isUsedCat cf wordCat) $
-      defineSymbol "word"
-        <+> formatSent [NonOptional (Left wordCat)] <> ","
-  where
-    -- TODO: word token needs to become a token type instead of strToCat.
-    wordCatValid = wordCat == TokenCat catIdent || wordCat `elem` allParserCats cf
+  when (isUsedCat cf wordCat) $
+    defineSymbol "word"
+      <+> formatSent [NonOptional (Left wordCat)] <> ","
 
 -- | Prints the rules in the grammar with the entry point first.
 --

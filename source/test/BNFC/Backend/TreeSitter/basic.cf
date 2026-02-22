@@ -1,7 +1,9 @@
 -- start symbol should be allowed to be optional
-rules Start ::= Ident Start | ;
+rules Start ::= MyIdent Start | ;
 
 comment "//";
 comment "/*" "*/";
+
+token MyIdent 'a'+;
 
 

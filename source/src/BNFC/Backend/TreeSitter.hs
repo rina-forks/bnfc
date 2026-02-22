@@ -15,6 +15,7 @@ module BNFC.Backend.TreeSitter where
 
 import BNFC.Backend.Base
 import BNFC.Backend.TreeSitter.CFtoTreeSitter (cfToTreeSitter)
+import BNFC.GetCF(fixTokenCats, FixTokenCats)
 import BNFC.CF
 import BNFC.Options hiding (Backend)
 import BNFC.PrettyPrint
@@ -25,7 +26,7 @@ makeTreeSitter opts cf = do
   mkfile "grammar.js" comment (render $ cfToTreeSitter name wordCat cf)
   where
     name = lang opts
-    wordCat = strToCat (treeSitterWord opts)
+    wordCat = fixTokenCats (tokenNames cf) (strToCat (treeSitterWord opts))
 
 comment :: String -> String
 comment = ("// " ++)

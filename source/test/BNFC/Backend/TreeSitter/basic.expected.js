@@ -6,7 +6,6 @@ module.exports = grammar({
     /\/\/.*\n/,
     /\/\*[^*]*\*([^\*\/][^*]*\*|\*)*\//,
   ],
-  word: $ => $.token_Ident,
   rules: {
     BNFCStart: $ =>
       optional(
@@ -15,12 +14,12 @@ module.exports = grammar({
       ),
     Start: $ =>
       choice(
-        // Start1. Start ::= Ident Start ;
-        seq($.token_Ident, optional($.Start)),
+        // Start1. Start ::= MyIdent Start ;
+        seq($.token_MyIdent, optional($.Start)),
         // Start2. Start ::= ;
         choice()
       ),
-    token_Ident: $ =>
-      /[a-zA-Z]([a-zA-Z]|\d|_|')*/,
+    token_MyIdent: $ =>
+      /a+/,
   },
 });

@@ -1,7 +1,9 @@
-.PHONY: all test
+.PHONY: all test-generate clean
 
 all:
 	bash -ec 'for f in *.cf; do js="$${f%.cf}".expected.js && rm -rfv $$js && $(MAKE) $$js; done'
+	$(MAKE) test-generate
+	git diff --exit-code --stat './*.js'
 
 %.expected.js: %.cf
 	cabal run bnfc -- --tree-sitter $<
@@ -11,3 +13,5 @@ all:
 test-generate: *.expected.js
 	bash -xec 'd=`pwd`; cd `mktemp -d`; for f in "$$@"; do cp $$d/tree-sitter.json .; tree-sitter generate $$d/$$f; echo; done' x $^
 
+clean:
+	git restore -- './*.js'
